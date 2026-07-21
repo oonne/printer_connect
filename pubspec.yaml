@@ -1,5 +1,5 @@
 name: printer_connect
-description: "A new Flutter plugin project."
+description: "A Flutter plugin for connecting to printers."
 version: 0.0.1
 homepage:
 
