@@ -5,7 +5,8 @@ final class PrinterConnectAsyncServiceDiscovery {
 
     private let logger = PrinterConnectLogger.shared
     private let peripheral: CBPeripheral
-    private let completion: (Result<[UniversalBleService], PigeonError>) -> Void
+    private let deviceId: String
+    private let completion: (Result<[UniversalBleService], Error>) -> Void
     private let withDescriptors: Bool
 
     private var discoveredServices: [UniversalBleService] = []
@@ -20,8 +21,9 @@ final class PrinterConnectAsyncServiceDiscovery {
 
     private var allServicesReady: Bool = false
 
-    init(peripheral: CBPeripheral, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], PigeonError>) -> Void) {
+    init(peripheral: CBPeripheral, deviceId: String, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], Error>) -> Void) {
         self.peripheral = peripheral
+        self.deviceId = deviceId
         self.withDescriptors = withDescriptors
         self.completion = completion
     }
@@ -48,12 +50,18 @@ final class PrinterConnectAsyncServiceDiscovery {
         allServicesReady = false
     }
 
-    func handleDidDiscoverServices(_ services: [CBService]?) {
-        guard let services = services else {
+    func handleDidDiscoverServices(_ peripheral: CBPeripheral, error: Error?) {
+        if let error = error {
+            logger.logError("Error discovering services: \(error.localizedDescription)")
+            completion(.failure(error))
+            cleanup()
+            return
+        }
+
+        guard let services = peripheral.services else {
             completion(.failure(createFlutterError(
                 code: "discoverServicesError",
-                message: "No services found",
-                details: nil
+                message: "No services found"
             )))
             cleanup()
             return
@@ -78,8 +86,15 @@ final class PrinterConnectAsyncServiceDiscovery {
         }
     }
 
-    func handleDidDiscoverCharacteristicsFor(_ characteristics: [CBCharacteristic]?, for service: CBService) {
-        let characteristicsList = characteristics ?? []
+    func handleDidDiscoverCharacteristicsFor(_ peripheral: CBPeripheral, service: CBService, error: Error?) {
+        if let error = error {
+            logger.logError("Error discovering characteristics: \(error.localizedDescription)")
+            completion(.failure(error))
+            cleanup()
+            return
+        }
+
+        let characteristicsList = service.characteristics ?? []
         serviceCharacteristicsMap[service.uuid.uuidString] = characteristicsList
 
         characteristicsDiscovered += characteristicsList.count
@@ -95,7 +110,7 @@ final class PrinterConnectAsyncServiceDiscovery {
         checkForDiscoveryCompletion()
     }
 
-    func handleDidDiscoverDescriptorsFor(_ characteristic: CBCharacteristic, error: Error?) {
+    func handleDidDiscoverDescriptorsFor(_ peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
             descriptorsDiscovered += 1
             logger.logError("Descriptor discovery error: \(error.localizedDescription)")

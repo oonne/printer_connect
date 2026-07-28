@@ -1,142 +1,85 @@
-import Foundation
 import CoreBluetooth
+import Foundation
 
-extension UniversalScanFilter {
-    var usesCustomFilters: Bool {
-        return !withServices.isEmpty || !withManufacturerData.isEmpty || !withNamePrefix.isEmpty
+class PrinterConnectFilterUtil {
+
+    var scanFilter: UniversalScanFilter?
+    var scanFilterServicesUUID: [CBUUID] = []
+
+    func filterDevice(name: String?, manufacturerData: UniversalManufacturerData?, services: [CBUUID]?) -> Bool {
+        guard let filter = scanFilter else {
+            return true
+        }
+        let hasNamePrefixFilter = !filter.withNamePrefix.isEmpty
+        let hasServiceFilter = !filter.withServices.isEmpty
+        let hasManufacturerDataFilter = !filter.withManufacturerData.isEmpty
+
+        if !hasNamePrefixFilter && !hasServiceFilter && !hasManufacturerDataFilter {
+            return true
+        }
+
+        return hasNamePrefixFilter && isNameMatchingFilters(filter: filter, name: name) ||
+            hasServiceFilter && isServicesMatchingFilters(services: services) ||
+            hasManufacturerDataFilter && isManufacturerDataMatchingFilters(scanFilter: filter, msd: manufacturerData)
+    }
+
+    func isNameMatchingFilters(filter: UniversalScanFilter, name: String?) -> Bool {
+        let prefixFilters = filter.withNamePrefix.compactMap { $0 }.filter { !$0.isEmpty }
+        guard !prefixFilters.isEmpty else {
+            return true
+        }
+        guard let name = name, !name.isEmpty else {
+            return false
+        }
+        return prefixFilters.contains { name.hasPrefix($0) }
+    }
+
+    func isServicesMatchingFilters(services: [CBUUID]?) -> Bool {
+        let serviceFilters = Set(scanFilterServicesUUID.compactMap { $0 })
+        guard !serviceFilters.isEmpty else {
+            return true
+        }
+        guard let services = services, !services.isEmpty else {
+            return false
+        }
+        return !Set(services).isDisjoint(with: serviceFilters)
+    }
+
+    func isManufacturerDataMatchingFilters(scanFilter: UniversalScanFilter, msd: UniversalManufacturerData?) -> Bool {
+        let filters = scanFilter.withManufacturerData.compactMap { $0 }
+        if filters.isEmpty {
+            return true
+        }
+        guard let msd = msd else {
+            return false
+        }
+        for filter in filters {
+            let companyIdentifier: Int64 = filter.companyIdentifier
+            if msd.companyIdentifier == companyIdentifier && findData(find: filter.payloadPrefix?.toData(), inData: msd.data.toData(), usingMask: filter.payloadMask?.toData()) {
+                return true
+            }
+        }
+        return false
+    }
+
+    func findData(find: Data?, inData data: Data, usingMask mask: Data?) -> Bool {
+        if let find = find {
+            let mask = mask ?? Data(repeating: 0xFF, count: find.count)
+            guard find.count == mask.count else {
+                return false
+            }
+            for i in 0 ..< find.count {
+                if (find[i] & mask[i]) != (data[i] & mask[i]) {
+                    return false
+                }
+            }
+        }
+        return true
     }
 }
 
-struct PrinterConnectFilterUtil {
-
-    static func filterDevice(
-        _ peripheral: CBPeripheral,
-        advertisementData: [String: Any],
-        rssi: NSNumber,
-        filter: UniversalScanFilter?
-    ) -> UniversalBleScanResult? {
-        let peripheralId = peripheral.identifier.uuidString
-        let name = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name
-
-        var manufacturerDataList: [UniversalManufacturerData]? = nil
-        if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-            let companyId = Int64(manufacturerData.prefix(2).withUnsafeBytes {
-                $0.load(as: UInt16.self)
-            })
-            let data = FlutterStandardTypedData(bytes: manufacturerData.dropFirst(2))
-            manufacturerDataList = [UniversalManufacturerData(companyIdentifier: companyId, data: data)]
-        }
-
-        var serviceUuids: [String]? = nil
-        if let services = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
-            serviceUuids = services.map { $0.uuidString }
-        }
-
-        let result = UniversalBleScanResult(
-            deviceId: peripheralId,
-            name: name,
-            isPaired: nil,
-            rssi: rssi.int64Value,
-            manufacturerDataList: manufacturerDataList,
-            serviceData: nil,
-            services: serviceUuids,
-            timestamp: nil
-        )
-
-        guard let filter = filter else {
-            return result
-        }
-
-        if isNameMatchingFilters(filter: filter, name: name) &&
-            isServicesMatchingFilters(filter: filter, serviceUuids: serviceUuids) &&
-            isManufacturerDataMatchingFilters(filter: filter, manufacturerData: manufacturerDataList) {
-            return result
-        }
-
-        return nil
-    }
-
-    static func isNameMatchingFilters(filter: UniversalScanFilter, name: String?) -> Bool {
-        guard !filter.withNamePrefix.isEmpty else {
-            return true
-        }
-
-        guard let name = name else {
-            return false
-        }
-
-        for prefix in filter.withNamePrefix {
-            if !name.hasPrefix(prefix) {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    static func isServicesMatchingFilters(filter: UniversalScanFilter, serviceUuids: [String]?) -> Bool {
-        guard !filter.withServices.isEmpty else {
-            return true
-        }
-
-        guard let serviceUuids = serviceUuids, !serviceUuids.isEmpty else {
-            return false
-        }
-
-        for filterService in filter.withServices {
-            if !serviceUuids.contains(filterService) {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    static func isManufacturerDataMatchingFilters(filter: UniversalScanFilter, manufacturerData: [UniversalManufacturerData]?) -> Bool {
-        guard !filter.withManufacturerData.isEmpty else {
-            return true
-        }
-
-        guard let manufacturerData = manufacturerData, !manufacturerData.isEmpty else {
-            return false
-        }
-
-        for filterEntry in filter.withManufacturerData {
-            guard let matchingEntry = manufacturerData.first(where: { $0.companyIdentifier == filterEntry.companyIdentifier }) else {
-                return false
-            }
-
-            let matchingData = matchingEntry.data.data
-
-            guard let prefix = filterEntry.payloadPrefix, !prefix.isEmpty else {
-                continue
-            }
-
-            let prefixData = prefix.data
-
-            guard let mask = filterEntry.payloadMask, !mask.isEmpty else {
-                if matchingData.prefix(prefixData.count) != prefixData {
-                    return false
-                }
-                continue
-            }
-
-            let maskData = mask.data
-
-            for i in 0..<prefixData.count {
-                if i >= matchingData.count {
-                    return false
-                }
-                let maskByte = maskData[i]
-                if maskByte == 0 {
-                    continue
-                }
-                if matchingData[i] != prefixData[i] {
-                    return false
-                }
-            }
-        }
-
-        return true
+extension UniversalScanFilter {
+    var usesCustomFilters: Bool {
+        return !withManufacturerData.isEmpty || !withNamePrefix.isEmpty
     }
 }

@@ -25,51 +25,117 @@ public class PrinterConnectPlugin: NSObject, FlutterPlugin {
         central.setupCallbackChannels(callbackChannel: callbackChannel)
 
         UniversalBlePlatformChannelSetup.setUp(binaryMessenger: binaryMessenger, api: central)
+
+        #if os(iOS)
+        central.activateStateRestoration()
+        #endif
     }
 }
 
-class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
+private var discoveredPeripherals = [String: CBPeripheral]()
+private var advertisementNameCache = [String: String]()
 
-    private var centralManager: CBCentralManager!
-    private var peripherals: [String: CBPeripheral] = [:]
-    private var scanFilter: UniversalScanFilter?
-    private var autoConnectDevices: Set<String> = []
+class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentralManagerDelegate, CBPeripheralDelegate {
 
-    private var readFutures: [String: CharacteristicReadFuture] = [:]
-    private var writeFutures: [String: CharacteristicWriteFuture] = [:]
-    private var notifyFutures: [String: CharacteristicNotifyFuture] = [:]
-    private var discoverFutures: [String: DiscoverServicesFuture] = [:]
-    private var rssiFutures: [String: RssiReadFuture] = [:]
-    private var connectionFutures: [String: ConnectionStateFuture] = [:]
-    private var mtuFutures: [String: MtuFuture] = [:]
-    private var pairedFutures: [String: PairedStateFuture] = [:]
+    static let stateRestorationIdentifier = "com.printerconnect.central.restoration"
 
-    private var serviceDiscoveries: [String: PrinterConnectAsyncServiceDiscovery] = [:]
+    #if os(iOS)
+    private static let hasBluetoothCentralBackgroundMode: Bool = {
+        guard let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] else {
+            return false
+        }
+        return modes.contains("bluetooth-central")
+    }()
 
-    private var callbackChannel: UniversalBleCallbackChannel?
+    private static var hasBluetoothPermission: Bool {
+        CBCentralManager.authorization == .allowedAlways
+    }
+
+    private static var availabilityStateFromAuthorization: AvailabilityState {
+        switch CBCentralManager.authorization {
+        case .restricted, .denied:
+            return .unauthorized
+        case .notDetermined:
+            return .unknown
+        default:
+            return .unknown
+        }
+    }
+    #endif
+
+    var callbackChannel: UniversalBleCallbackChannel?
     private let logger = PrinterConnectLogger.shared
+    private let printerConnectFilterUtil = PrinterConnectFilterUtil()
 
-    private var lastAvailabilityState: AvailabilityState = .unknown
+    #if os(iOS)
+    private lazy var manager: CBCentralManager = {
+        if Self.hasBluetoothCentralBackgroundMode {
+            return CBCentralManager(
+                delegate: self,
+                queue: nil,
+                options: [CBCentralManagerOptionRestoreIdentifierKey: BleCentralDarwin.stateRestorationIdentifier]
+            )
+        }
+        return CBCentralManager(delegate: self, queue: nil)
+    }()
+    #else
+    private lazy var manager: CBCentralManager = .init(delegate: self, queue: nil)
+    #endif
+
+    private var availabilityStateUpdateHandlers: [(Result<AvailabilityState, Error>) -> Void] = []
+    private var requestPermissionStateUpdateHandlers: [(Result<Void, Error>) -> Void] = []
+
+    private var activeServiceDiscoveries: [String: PrinterConnectAsyncServiceDiscovery] = [:]
+
+    private var characteristicReadFutures = [CharacteristicReadFuture]()
+    private var characteristicWriteFutures = [CharacteristicWriteFuture]()
+    private var characteristicWriteWithoutResponseFutures = [CharacteristicWriteFuture]()
+    private var characteristicNotifyFutures = [CharacteristicNotifyFuture]()
+    private var discoverServicesFutures = [DiscoverServicesFuture]()
+    private var rssiReadFutures = [RssiReadFuture]()
+
+    private var isManageScanning = false
+    private var autoConnectDevices = Set<String>()
 
     override init() {
         super.init()
-        #if os(iOS)
-        centralManager = CBCentralManager(delegate: self, queue: nil, options: [CBCentralManagerOptionRestoreIdentifierKey: "printer_connect_restoration"])
-        #elseif os(macOS)
-        centralManager = CBCentralManager(delegate: self, queue: nil)
-        #endif
     }
 
     func setupCallbackChannels(callbackChannel: UniversalBleCallbackChannel) {
         self.callbackChannel = callbackChannel
     }
 
-    private func sendAvailabilityChanged(_ state: AvailabilityState) {
-        callbackChannel?.onAvailabilityChanged(state: state) { _ in }
+    #if os(iOS)
+    func activateStateRestoration() {
+        guard Self.hasBluetoothCentralBackgroundMode, Self.hasBluetoothPermission else { return }
+        _ = manager
+    }
+    #endif
+
+    private func saveCache(_ peripheral: CBPeripheral) {
+        discoveredPeripherals[peripheral.uuid] = peripheral
     }
 
-    private func sendPairStateChange(deviceId: String, isPaired: Bool, error: String?) {
-        callbackChannel?.onPairStateChange(deviceId: deviceId, isPaired: isPaired, error: error) { _ in }
+    private func getPeripheral(_ peripheralId: String) -> CBPeripheral? {
+        if let peripheral = discoveredPeripherals[peripheralId] {
+            return peripheral
+        }
+        if let uuid = UUID(uuidString: peripheralId) {
+            let peripherals = manager.retrievePeripherals(withIdentifiers: [uuid])
+            if let peripheral = peripherals.first {
+                saveCache(peripheral)
+                return peripheral
+            }
+        }
+        return nil
+    }
+
+    private func findPeripheral(_ peripheralId: String) -> CBPeripheral? {
+        return getPeripheral(peripheralId)
+    }
+
+    private func sendAvailabilityChanged(_ state: AvailabilityState) {
+        callbackChannel?.onAvailabilityChanged(state: state) { _ in }
     }
 
     private func sendScanResult(_ result: UniversalBleScanResult) {
@@ -88,87 +154,50 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
         callbackChannel?.onConnectionParametersUpdated(update: result) { _ in }
     }
 
-    private func getPeripheral(_ peripheralId: String) -> CBPeripheral? {
-        if let peripheral = peripherals[peripheralId] {
-            return peripheral
-        }
-        if let peripheral = centralManager.retrievePeripherals(withIdentifiers: [peripheralId]).first {
-            peripherals[peripheralId] = peripheral
-            return peripheral
-        }
-        return nil
-    }
-
-    private func getCharacteristic(peripheralId: String, serviceId: String, characteristicId: String) -> CBCharacteristic? {
-        guard let peripheral = getPeripheral(peripheralId) else { return nil }
-        guard let service = peripheral.services?.first(where: { $0.uuid.uuidString == serviceId }) else { return nil }
-        return service.characteristics?.first(where: { $0.uuid.uuidString == characteristicId })
-    }
-
-    private func key(_ peripheralId: String, _ serviceId: String, _ characteristicId: String) -> String {
-        return "\(peripheralId)_\(serviceId)_\(characteristicId)"
-    }
-
     func getBluetoothAvailabilityState(completion: @escaping (Result<AvailabilityState, Error>) -> Void) {
-        let state = centralManager.state.toAvailabilityState
-        completion(.success(state))
+        #if os(iOS)
+        if Self.hasBluetoothCentralBackgroundMode, !Self.hasBluetoothPermission {
+            completion(.success(Self.availabilityStateFromAuthorization))
+            return
+        }
+        #endif
+        if manager.state != .unknown {
+            completion(.success(manager.state.toAvailabilityState))
+        } else {
+            availabilityStateUpdateHandlers.append(completion)
+            _ = manager
+        }
     }
 
     func hasPermissions(withAndroidFineLocation: Bool) throws -> Bool {
-        #if os(iOS)
-        if #available(iOS 13.1, *) {
-            let authorization = CBCentralManager.authorization
-            return authorization != .denied && authorization != .restricted
-        } else {
-            let state = centralManager.state
-            return state != .unsupported && state != .unauthorized
-        }
-        #elseif os(macOS)
-        let state = centralManager.state
-        return state != .unsupported && state != .unauthorized
-        #endif
+        return CBCentralManager.authorization == .allowedAlways
     }
 
     func requestPermissions(withAndroidFineLocation: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
-        let state = centralManager.state
+        if manager.state != .unknown {
+            completePermissionRequest(completion: completion)
+        } else {
+            requestPermissionStateUpdateHandlers.append(completion)
+            _ = manager
+        }
+    }
+
+    private func completePermissionRequest(completion: @escaping (Result<Void, Error>) -> Void) {
+        let state = manager.state
         switch state {
-        case .poweredOn, .poweredOff, .resetting:
-            completion(.success(()))
         case .unauthorized:
-            completion(.failure(PigeonError(
-                code: "permissionsDenied",
-                message: "Bluetooth permissions denied",
-                details: nil
-            )))
+            completion(.failure(createFlutterError(code: "bluetoothUnauthorized", message: "Not authorized to access Bluetooth")))
         case .unsupported:
-            completion(.failure(PigeonError(
-                code: "notSupported",
-                message: "Bluetooth is not supported on this device",
-                details: nil
-            )))
-        case .unknown:
-            completion(.failure(PigeonError(
-                code: "unknown",
-                message: "Bluetooth state is unknown",
-                details: nil
-            )))
-        @unknown default:
-            completion(.failure(PigeonError(
-                code: "unknown",
-                message: "Bluetooth state is unknown",
-                details: nil
-            )))
+            completion(.failure(createFlutterError(code: "notSupported", message: "Bluetooth is not supported")))
+        default:
+            completion(.success(()))
         }
     }
 
     func enableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void) {
         #if os(iOS)
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
-            completion(.failure(PigeonError(
-                code: "settingsError",
-                message: "Unable to open settings",
-                details: nil
-            )))
+            completion(.failure(createFlutterError(code: "settingsError", message: "Unable to open settings")))
             return
         }
         if UIApplication.shared.canOpenURL(url) {
@@ -181,11 +210,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
     func disableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void) {
         #if os(iOS)
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
-            completion(.failure(PigeonError(
-                code: "settingsError",
-                message: "Unable to open settings",
-                details: nil
-            )))
+            completion(.failure(createFlutterError(code: "settingsError", message: "Unable to open settings")))
             return
         }
         if UIApplication.shared.canOpenURL(url) {
@@ -196,47 +221,47 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
     }
 
     func startScan(filter: UniversalScanFilter?, config: UniversalScanConfig?) throws {
-        scanFilter = filter
+        let usesCustomFilters = filter?.usesCustomFilters ?? false
 
-        guard centralManager.state == .poweredOn else {
-            throw PigeonError(
-                code: "bluetoothNotReady",
-                message: "Bluetooth is not powered on",
-                details: nil
-            )
-        }
+        var withServices: [CBUUID] = try filter?.withServices.compactMap { CBUUID(string: $0) } ?? []
 
-        var uuidsToScan: [CBUUID]? = nil
-        if let filter = filter {
-            if !filter.withServices.isEmpty {
-                uuidsToScan = filter.withServices.map { CBUUID(string: $0) }
-            }
+        if usesCustomFilters {
+            logger.logInfo("Using Custom Filters")
+            printerConnectFilterUtil.scanFilter = filter
+            printerConnectFilterUtil.scanFilterServicesUUID = withServices
+            withServices = []
+        } else {
+            printerConnectFilterUtil.scanFilter = nil
+            printerConnectFilterUtil.scanFilterServicesUUID = []
         }
 
         let options: [String: Any] = [CBCentralManagerScanOptionAllowDuplicatesKey: true]
-        centralManager.scanForPeripherals(withServices: uuidsToScan, options: options)
+        manager.scanForPeripherals(withServices: withServices.isEmpty ? nil : withServices, options: options)
+        isManageScanning = true
     }
 
     func stopScan() throws {
-        centralManager.stopScan()
+        manager.stopScan()
+        isManageScanning = false
     }
 
     func isScanning() throws -> Bool {
-        return centralManager.isScanning
+        if CBCentralManager.authorization == .allowedAlways {
+            return manager.isScanning
+        }
+        return isManageScanning
     }
 
     func connect(deviceId: String, autoConnect: Bool?, platformConfig: ConnectionPlatformConfig?) throws {
-        guard let peripheral = getPeripheral(deviceId) else {
-            throw PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )
+        guard let peripheral = findPeripheral(deviceId) else {
+            throw createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")
         }
 
         peripheral.delegate = self
 
+        let shouldAutoConnect = autoConnect ?? false
         var options: [String: Any] = [:]
+
         #if os(iOS)
         if let appleOptions = platformConfig?.apple {
             if let notifyOnConnection = appleOptions.notifyOnConnection, notifyOnConnection {
@@ -249,369 +274,313 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
                 options[CBConnectPeripheralOptionNotifyOnNotificationKey] = true
             }
         }
-        if #available(iOS 17.0, *) {
-            if autoConnect ?? false {
+
+        if shouldAutoConnect {
+            autoConnectDevices.insert(deviceId)
+            if #available(iOS 17.0, *) {
                 options[CBConnectPeripheralOptionEnableAutoReconnect] = true
+            } else {
+                logger.logInfo("autoConnect requested for device \(deviceId), but automatic reconnection via CBConnectPeripheralOptionEnableAutoReconnect is only available on iOS 17+. On this OS version, reconnections must be handled manually.")
             }
         } else {
-            if autoConnect ?? false {
-                logger.logWarning("autoConnect (CBConnectPeripheralOptionEnableAutoReconnect) is only available on iOS 17+")
+            autoConnectDevices.remove(deviceId)
+        }
+        #elseif os(macOS)
+        if let appleOptions = platformConfig?.apple {
+            if let notifyOnConnection = appleOptions.notifyOnConnection, notifyOnConnection {
+                options[CBConnectPeripheralOptionNotifyOnConnectionKey] = true
             }
+            if let notifyOnDisconnection = appleOptions.notifyOnDisconnection, notifyOnDisconnection {
+                options[CBConnectPeripheralOptionNotifyOnDisconnectionKey] = true
+            }
+            if let notifyOnNotification = appleOptions.notifyOnNotification, notifyOnNotification {
+                options[CBConnectPeripheralOptionNotifyOnNotificationKey] = true
+            }
+        }
+
+        if shouldAutoConnect {
+            autoConnectDevices.insert(deviceId)
+            if #available(macOS 14.0, *) {
+                options[CBConnectPeripheralOptionEnableAutoReconnect] = true
+            } else {
+                logger.logInfo("autoConnect requested for device \(deviceId), but automatic reconnection via CBConnectPeripheralOptionEnableAutoReconnect is only available on macOS 14+. On this OS version, reconnections must be handled manually.")
+            }
+        } else {
+            autoConnectDevices.remove(deviceId)
         }
         #endif
 
-        if autoConnect ?? false {
-            autoConnectDevices.insert(deviceId)
-        }
-
-        connectionFutures[deviceId] = ConnectionStateFuture { [weak self] result in
-            guard let self = self else { return }
-            switch result {
-            case .success:
-                self.sendConnectionChanged(deviceId: deviceId, connected: true, error: nil)
-            case .failure(let error):
-                self.sendConnectionChanged(deviceId: deviceId, connected: false, error: error.message)
-            }
-        }
-
-        centralManager.connect(peripheral, options: options)
+        manager.connect(peripheral, options: options.isEmpty ? nil : options)
     }
 
     func disconnect(deviceId: String) throws {
         autoConnectDevices.remove(deviceId)
 
-        guard let peripheral = getPeripheral(deviceId) else {
-            throw PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )
+        guard let peripheral = findPeripheral(deviceId) else {
+            sendConnectionChanged(deviceId: deviceId, connected: false, error: nil)
+            cleanUpConnection(deviceId: deviceId)
+            return
         }
 
         if peripheral.state != .disconnected {
-            connectionFutures[deviceId] = ConnectionStateFuture { [weak self] result in
-                guard let self = self else { return }
-                self.cleanUpConnection(deviceId)
-                switch result {
-                case .success:
-                    self.sendConnectionChanged(deviceId: deviceId, connected: false, error: nil)
-                case .failure(let error):
-                    self.sendConnectionChanged(deviceId: deviceId, connected: false, error: error.message)
-                }
-            }
-
-            centralManager.cancelPeripheralConnection(peripheral)
-        } else {
-            cleanUpConnection(deviceId)
-            sendConnectionChanged(deviceId: deviceId, connected: false, error: nil)
+            manager.cancelPeripheralConnection(peripheral)
         }
+        cleanUpConnection(deviceId: deviceId)
     }
 
-    private func cleanUpConnection(_ peripheralId: String) {
-        let error = PigeonError(
-            code: "connectionClosed",
-            message: "Connection closed",
-            details: nil
-        )
-
-        for (key, future) in readFutures {
-            if key.hasPrefix(peripheralId) {
-                future.completion(.failure(error))
+    private func cleanUpConnection(deviceId: String) {
+        characteristicReadFutures.removeAll { future in
+            if future.deviceId == deviceId {
+                future.result(.failure(createFlutterError(code: "deviceDisconnected", message: "Device Disconnected")))
+                return true
             }
+            return false
         }
-        readFutures = readFutures.filter { !$0.key.hasPrefix(peripheralId) }
 
-        for (key, future) in writeFutures {
-            if key.hasPrefix(peripheralId) {
-                future.completion(.failure(error))
+        characteristicWriteFutures.removeAll { future in
+            if future.deviceId == deviceId {
+                future.result(.failure(createFlutterError(code: "deviceDisconnected", message: "Device Disconnected")))
+                return true
             }
+            return false
         }
-        writeFutures = writeFutures.filter { !$0.key.hasPrefix(peripheralId) }
 
-        for (key, future) in notifyFutures {
-            if key.hasPrefix(peripheralId) {
-                future.completion(.failure(error))
+        characteristicNotifyFutures.removeAll { future in
+            if future.deviceId == deviceId {
+                future.result(.failure(createFlutterError(code: "deviceDisconnected", message: "Device Disconnected")))
+                return true
             }
-        }
-        notifyFutures = notifyFutures.filter { !$0.key.hasPrefix(peripheralId) }
-
-        if let future = rssiFutures.removeValue(forKey: peripheralId) {
-            future.completion(.failure(error))
+            return false
         }
 
-        if let future = mtuFutures.removeValue(forKey: peripheralId) {
-            future.completion(.failure(error))
+        discoverServicesFutures.removeAll { future in
+            if future.deviceId == deviceId {
+                future.result(.failure(createFlutterError(code: "deviceDisconnected", message: "Device Disconnected")))
+                return true
+            }
+            return false
         }
 
-        if let future = discoverFutures.removeValue(forKey: peripheralId) {
-            future.completion(.failure(error))
+        rssiReadFutures.removeAll { future in
+            if future.deviceId == deviceId {
+                future.result(.failure(createFlutterError(code: "deviceDisconnected", message: "Device Disconnected")))
+                return true
+            }
+            return false
         }
 
-        if let future = connectionFutures.removeValue(forKey: peripheralId) {
-            future.completion(.failure(error))
-        }
-
-        if let future = pairedFutures.removeValue(forKey: peripheralId) {
-            future.completion(.failure(error))
-        }
-
-        serviceDiscoveries.removeValue(forKey: peripheralId)
+        activeServiceDiscoveries[deviceId]?.cleanup()
+        activeServiceDiscoveries[deviceId] = nil
     }
 
     func setNotifiable(deviceId: String, service: String, characteristic: String, bleInputProperty: BleInputProperty, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        logger.logDebug("SET_NOTIFY -> \(deviceId) \(service) \(characteristic) input=\(bleInputProperty)")
+
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
-        let key = key(deviceId, service, characteristic)
-        notifyFutures[key] = CharacteristicNotifyFuture { result in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-
-        guard let characteristicObj = getCharacteristic(deviceId, service, characteristic) else {
-            notifyFutures.removeValue(forKey: key)
-            completion(.failure(PigeonError(
-                code: "characteristicNotFound",
-                message: "Characteristic not found: \(characteristic)",
-                details: nil
-            )))
+        guard let gattCharacteristic = peripheral.getCharacteristic(characteristic, of: service) else {
+            completion(.failure(createFlutterError(code: "characteristicNotFound", message: "Unknown characteristic:\(characteristic)")))
             return
         }
 
-        let enable: Bool
-        switch bleInputProperty {
-        case .notification:
-            guard characteristicObj.properties.contains(.notify) else {
-                notifyFutures.removeValue(forKey: key)
-                completion(.failure(PigeonError(
-                    code: "notSupported",
-                    message: "Characteristic does not support notify",
-                    details: nil
-                )))
-                return
-            }
-            enable = true
-        case .indication:
-            guard characteristicObj.properties.contains(.indicate) else {
-                notifyFutures.removeValue(forKey: key)
-                completion(.failure(PigeonError(
-                    code: "notSupported",
-                    message: "Characteristic does not support indicate",
-                    details: nil
-                )))
-                return
-            }
-            enable = true
-        case .disabled:
-            enable = false
+        if bleInputProperty == .notification && !gattCharacteristic.properties.contains(.notify) {
+            completion(.failure(createFlutterError(code: "characteristicDoesNotSupportNotify", message: "Characteristic does not support notify")))
+            return
         }
 
-        peripheral.setNotifyValue(enable, for: characteristicObj)
+        if bleInputProperty == .indication && !gattCharacteristic.properties.contains(.indicate) {
+            completion(.failure(createFlutterError(code: "characteristicDoesNotSupportIndicate", message: "Characteristic does not support indicate")))
+            return
+        }
+
+        let shouldNotify = bleInputProperty != .disabled
+        peripheral.setNotifyValue(shouldNotify, for: gattCharacteristic)
+        characteristicNotifyFutures.append(CharacteristicNotifyFuture(
+            deviceId: deviceId,
+            characteristicId: gattCharacteristic.uuid.uuidStr,
+            serviceId: gattCharacteristic.service?.uuid.uuidStr ?? "",
+            result: completion
+        ))
     }
 
     func discoverServices(deviceId: String, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
-        peripheral.delegate = self
-
-        let discovery = PrinterConnectAsyncServiceDiscovery(peripheral: peripheral, withDescriptors: withDescriptors) { [weak self] result in
-            guard let self = self else { return }
-            self.discoverFutures.removeValue(forKey: deviceId)
-            self.serviceDiscoveries.removeValue(forKey: deviceId)
-            completion(result)
+        if activeServiceDiscoveries[deviceId] != nil {
+            logger.logWarning("Services discovery already in progress for:\(deviceId), waiting for completion.")
+            discoverServicesFutures.append(DiscoverServicesFuture(deviceId: deviceId, result: completion))
+            return
         }
 
-        serviceDiscoveries[deviceId] = discovery
-        discoverFutures[deviceId] = DiscoverServicesFuture(completion: completion)
+        let wrappedCompletion: (Result<[UniversalBleService], Error>) -> Void = { result in
+            completion(result)
+            self.discoverServicesFutures.removeAll { future in
+                if future.deviceId == deviceId {
+                    future.result(result)
+                    return true
+                }
+                return false
+            }
+            self.activeServiceDiscoveries[deviceId] = nil
+        }
 
+        let discovery = PrinterConnectAsyncServiceDiscovery(
+            peripheral: peripheral,
+            deviceId: deviceId,
+            withDescriptors: withDescriptors,
+            completion: wrappedCompletion
+        )
+
+        activeServiceDiscoveries[deviceId] = discovery
         discovery.startDiscovery()
     }
 
     func readValue(deviceId: String, service: String, characteristic: String, completion: @escaping (Result<FlutterStandardTypedData, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        logger.logDebug("READ -> \(deviceId) \(service) \(characteristic)")
+
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
-        let key = key(deviceId, service, characteristic)
-        readFutures[key] = CharacteristicReadFuture { result in
-            switch result {
-            case .success(let data):
-                completion(.success(data))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-
-        guard let characteristicObj = getCharacteristic(deviceId, service, characteristic) else {
-            readFutures.removeValue(forKey: key)
-            completion(.failure(PigeonError(
-                code: "characteristicNotFound",
-                message: "Characteristic not found: \(characteristic)",
-                details: nil
-            )))
+        guard let gattCharacteristic = peripheral.getCharacteristic(characteristic, of: service) else {
+            completion(.failure(createFlutterError(code: "characteristicNotFound", message: "Unknown characteristic:\(characteristic)")))
             return
         }
 
-        peripheral.readValue(for: characteristicObj)
+        if !gattCharacteristic.properties.contains(.read) {
+            completion(.failure(createFlutterError(code: "characteristicDoesNotSupportRead", message: "Characteristic does not support read")))
+            return
+        }
+
+        peripheral.readValue(for: gattCharacteristic)
+        characteristicReadFutures.append(CharacteristicReadFuture(
+            deviceId: deviceId,
+            characteristicId: gattCharacteristic.uuid.uuidStr,
+            serviceId: gattCharacteristic.service?.uuid.uuidStr ?? "",
+            result: completion
+        ))
     }
 
     func requestMtu(deviceId: String, expectedMtu: Int64, completion: @escaping (Result<Int64, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        logger.logDebug("REQUEST_MTU -> \(deviceId)")
+
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
         #if os(iOS)
         guard #available(iOS 13.0, *) else {
-            completion(.failure(PigeonError(
-                code: "notSupported",
-                message: "requestMtu requires iOS 13+",
-                details: nil
-            )))
+            completion(.failure(createFlutterError(code: "notSupported", message: "requestMtu requires iOS 13+")))
             return
         }
+        let mtu = peripheral.maximumWriteValueLength(for: .withoutResponse)
+        let mtuResult = Int64(mtu + 3)
+        completion(.success(mtuResult))
+        #elseif os(macOS)
+        let mtu = peripheral.maximumWriteValueLength(for: .withoutResponse)
+        let mtuResult = Int64(mtu + 3)
+        completion(.success(mtuResult))
         #endif
-
-        mtuFutures[deviceId] = MtuFuture { result in
-            switch result {
-            case .success(let mtu):
-                completion(.success(mtu))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-
-        peripheral.requestMtu()
     }
 
     func writeValue(deviceId: String, service: String, characteristic: String, value: FlutterStandardTypedData, bleOutputProperty: BleOutputProperty, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        logger.logDebug("WRITE -> \(deviceId) \(service) \(characteristic) len=\(value.data.count) property=\(bleOutputProperty)")
+
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
-        let key = key(deviceId, service, characteristic)
-        writeFutures[key] = CharacteristicWriteFuture { result in
-            switch result {
-            case .success:
-                completion(.success(()))
-            case .failure(let error):
-                completion(.failure(error))
+        guard let gattCharacteristic = peripheral.getCharacteristic(characteristic, of: service) else {
+            completion(.failure(createFlutterError(code: "characteristicNotFound", message: "Unknown characteristic:\(characteristic)")))
+            return
+        }
+
+        let type: CBCharacteristicWriteType
+        switch bleOutputProperty {
+        case .withResponse:
+            type = .withResponse
+        case .withoutResponse:
+            type = .withoutResponse
+        }
+
+        if type == .withResponse {
+            if !gattCharacteristic.properties.contains(.write) {
+                completion(.failure(createFlutterError(code: "characteristicDoesNotSupportWrite", message: "Characteristic does not support write withResponse")))
+                return
+            }
+        } else {
+            if !gattCharacteristic.properties.contains(.writeWithoutResponse) {
+                completion(.failure(createFlutterError(code: "characteristicDoesNotSupportWriteWithoutResponse", message: "Characteristic does not support write withoutResponse")))
+                return
             }
         }
 
-        guard let characteristicObj = getCharacteristic(deviceId, service, characteristic) else {
-            writeFutures.removeValue(forKey: key)
-            completion(.failure(PigeonError(
-                code: "characteristicNotFound",
-                message: "Characteristic not found: \(characteristic)",
-                details: nil
-            )))
-            return
-        }
+        peripheral.writeValue(value.data, for: gattCharacteristic, type: type)
 
-        let data = value.data
+        let future = CharacteristicWriteFuture(
+            deviceId: deviceId,
+            characteristicId: gattCharacteristic.uuid.uuidStr,
+            serviceId: gattCharacteristic.service?.uuid.uuidStr ?? "",
+            result: completion
+        )
 
-        let writeType: CBCharacteristicWriteType
-        switch bleOutputProperty {
-        case .withResponse:
-            writeType = .withResponse
-        case .withoutResponse:
-            writeType = .withoutResponse
-        }
-
-        peripheral.writeValue(data, for: characteristicObj, type: writeType)
-
-        if writeType == .withoutResponse {
-            writeFutures.removeValue(forKey: key)
-            completion(.success(()))
+        if type == .withResponse {
+            characteristicWriteFutures.append(future)
+        } else {
+            characteristicWriteWithoutResponseFutures.append(future)
         }
     }
 
     func isPaired(deviceId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
         completion(.success(peripheral.state == .connected))
     }
 
     func pair(deviceId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
-            return
-        }
         completion(.success(true))
     }
 
     func unPair(deviceId: String) throws {
-        guard let peripheral = getPeripheral(deviceId) else {
-            throw PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )
+        guard let peripheral = findPeripheral(deviceId) else {
+            throw createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")
         }
 
         if peripheral.state == .connected {
             autoConnectDevices.remove(deviceId)
-            centralManager.cancelPeripheralConnection(peripheral)
+            manager.cancelPeripheralConnection(peripheral)
         }
     }
 
     func getSystemDevices(withServices: [String], completion: @escaping (Result<[UniversalBleScanResult], Error>) -> Void) {
         let services = withServices.compactMap { CBUUID(string: $0) }
-        let connected = centralManager.retrieveConnectedPeripherals(withServices: services.isEmpty ? nil : services)
+        let connected = manager.retrieveConnectedPeripherals(withServices: services.isEmpty ? nil : services)
         var results: [UniversalBleScanResult] = []
 
         for peripheral in connected {
+            saveCache(peripheral)
+            let id = peripheral.uuid
+            let name = advertisementNameCache[id] ?? discoveredPeripherals[id]?.name ?? peripheral.name ?? ""
             let result = UniversalBleScanResult(
-                deviceId: peripheral.identifier.uuidString,
-                name: peripheral.name,
+                deviceId: id,
+                name: name,
                 isPaired: nil,
                 rssi: 0,
                 manufacturerDataList: nil,
                 serviceData: nil,
                 services: withServices,
-                timestamp: nil
+                timestamp: Int64(Date().timeIntervalSince1970 * 1000)
             )
             results.append(result)
         }
@@ -620,12 +589,8 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
     }
 
     func getConnectionState(deviceId: String) throws -> BleConnectionState {
-        guard let peripheral = getPeripheral(deviceId) else {
-            throw PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )
+        guard let peripheral = findPeripheral(deviceId) else {
+            throw createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")
         }
 
         switch peripheral.state {
@@ -638,47 +603,28 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
     }
 
     func readRssi(deviceId: String, completion: @escaping (Result<Int64, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        logger.logDebug("READ_RSSI -> \(deviceId)")
+
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
-        rssiFutures[deviceId] = RssiReadFuture { result in
-            switch result {
-            case .success(let rssi):
-                completion(.success(rssi))
-            case .failure(let error):
-                completion(.failure(error))
-            }
-        }
-
         peripheral.readRSSI()
+        rssiReadFutures.append(RssiReadFuture(deviceId: deviceId, result: completion))
     }
 
     func requestConnectionPriority(deviceId: String, priority: BleConnectionPriority, completion: @escaping (Result<Void, Error>) -> Void) {
-        guard let peripheral = getPeripheral(deviceId) else {
-            completion(.failure(PigeonError(
-                code: "peripheralNotFound",
-                message: "Peripheral not found: \(deviceId)",
-                details: nil
-            )))
+        guard let peripheral = findPeripheral(deviceId) else {
+            completion(.failure(createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(deviceId)")))
             return
         }
 
         #if os(iOS)
         guard #available(iOS 13.0, *) else {
-            completion(.failure(PigeonError(
-                code: "notSupported",
-                message: "requestConnectionPriority requires iOS 13+",
-                details: nil
-            )))
+            completion(.failure(createFlutterError(code: "notSupported", message: "requestConnectionPriority requires iOS 13+")))
             return
         }
-        #endif
 
         let priorityValue: CBConnectionPriority
         switch priority {
@@ -692,18 +638,29 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
 
         peripheral.requestConnectionPriority(priorityValue)
         completion(.success(()))
+        #elseif os(macOS)
+        completion(.failure(createFlutterError(code: "notSupported", message: "requestConnectionPriority is not supported on macOS")))
+        #endif
     }
 
     func setLogLevel(logLevel: BleLogLevel) throws {
         logger.setLogLevel(logLevel)
     }
 
+    // MARK: - CBCentralManagerDelegate
+
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         let state = central.state.toAvailabilityState
         sendAvailabilityChanged(state)
 
-        if state != lastAvailabilityState {
-            lastAvailabilityState = state
+        availabilityStateUpdateHandlers.removeAll { handler in
+            handler(.success(state))
+            return true
+        }
+
+        requestPermissionStateUpdateHandlers.removeAll { handler in
+            completePermissionRequest(completion: handler)
+            return true
         }
 
         switch state {
@@ -723,271 +680,275 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
     }
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        peripherals[peripheral.identifier.uuidString] = peripheral
+        saveCache(peripheral)
 
-        if let result = PrinterConnectFilterUtil.filterDevice(peripheral, advertisementData: advertisementData, rssi: rssi, filter: scanFilter) {
-            sendScanResult(result)
+        let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
+        let services = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID]
+        let serviceDataDict = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data]
+
+        var manufacturerDataList: [UniversalManufacturerData] = []
+        var universalManufacturerData: UniversalManufacturerData? = nil
+
+        if let msd = manufacturerData, msd.count > 2 {
+            let companyIdentifier = msd.prefix(2).withUnsafeBytes { $0.load(as: UInt16.self) }
+            let data = FlutterStandardTypedData(bytes: msd.suffix(from: 2))
+            universalManufacturerData = UniversalManufacturerData(companyIdentifier: Int64(companyIdentifier), data: data)
+            manufacturerDataList.append(universalManufacturerData!)
         }
+
+        var serviceData: [String: FlutterStandardTypedData]? = nil
+        if let serviceDataDict = serviceDataDict {
+            serviceData = Dictionary(uniqueKeysWithValues: serviceDataDict.map { uuid, data in
+                (uuid.uuidStr, FlutterStandardTypedData(bytes: data))
+            })
+        }
+
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let displayName = advertisedName ?? peripheral.name
+        advertisementNameCache[peripheral.uuid] = displayName
+
+        if !printerConnectFilterUtil.filterDevice(name: displayName, manufacturerData: universalManufacturerData, services: services) {
+            return
+        }
+
+        callbackChannel?.onScanResult(result: UniversalBleScanResult(
+            deviceId: peripheral.uuid,
+            name: displayName,
+            isPaired: nil,
+            rssi: RSSI.int64Value,
+            manufacturerDataList: manufacturerDataList.isEmpty ? nil : manufacturerDataList,
+            serviceData: serviceData,
+            services: services?.map { $0.uuidStr },
+            timestamp: Int64(Date().timeIntervalSince1970 * 1000)
+        )) { _ in }
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        let peripheralId = peripheral.identifier.uuidString
-        peripherals[peripheralId] = peripheral
-
+        let peripheralId = peripheral.uuid
+        saveCache(peripheral)
         peripheral.delegate = self
+        sendConnectionChanged(deviceId: peripheralId, connected: true, error: nil)
+    }
 
-        if let future = connectionFutures.removeValue(forKey: peripheralId) {
-            future.completion(.success(()))
-        } else {
-            sendConnectionChanged(deviceId: peripheralId, connected: true, error: nil)
-        }
+    private func handlePeripheralDisconnection(deviceId: String, error: Error?) {
+        autoConnectDevices.remove(deviceId)
+        sendConnectionChanged(deviceId: deviceId, connected: false, error: error?.localizedDescription)
+        cleanUpConnection(deviceId: deviceId)
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
-
-        if let error = error {
-            if let future = connectionFutures.removeValue(forKey: peripheralId) {
-                future.completion(.failure(error.toPigeonError()))
-            } else {
-                sendConnectionChanged(deviceId: peripheralId, connected: false, error: error.localizedDescription)
-            }
-        } else {
-            let pigeonError = PigeonError(
-                code: "connectionFailed",
-                message: "Failed to connect",
-                details: nil
-            )
-            if let future = connectionFutures.removeValue(forKey: peripheralId) {
-                future.completion(.failure(pigeonError))
-            } else {
-                sendConnectionChanged(deviceId: peripheralId, connected: false, error: "Failed to connect")
-            }
-        }
+        let peripheralId = peripheral.uuid
+        sendConnectionChanged(deviceId: peripheralId, connected: false, error: error?.localizedDescription)
+        cleanUpConnection(deviceId: peripheralId)
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
-
-        if let future = connectionFutures.removeValue(forKey: peripheralId) {
-            if let error = error {
-                future.completion(.failure(error.toPigeonError()))
-            } else {
-                future.completion(.success(()))
-            }
-        } else {
-            cleanUpConnection(peripheralId)
-            if let error = error {
-                sendConnectionChanged(deviceId: peripheralId, connected: false, error: error.localizedDescription)
-            } else {
-                sendConnectionChanged(deviceId: peripheralId, connected: false, error: nil)
-            }
-        }
+        let peripheralId = peripheral.uuid
+        handlePeripheralDisconnection(deviceId: peripheralId, error: error)
     }
 
     #if os(iOS)
     func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
         logger.logInfo("Central manager will restore state")
 
-        if let restoredPeripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
-            for peripheral in restoredPeripherals {
-                peripherals[peripheral.identifier.uuidString] = peripheral
-                peripheral.delegate = self
+        guard let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] else {
+            return
+        }
+
+        for peripheral in peripherals {
+            peripheral.delegate = self
+            saveCache(peripheral)
+            let deviceId = peripheral.uuid
+            if peripheral.state == .connected {
+                sendConnectionChanged(deviceId: deviceId, connected: true, error: nil)
             }
         }
     }
     #endif
 
+    // MARK: - CBPeripheralDelegate
+
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
+        let peripheralId = peripheral.uuid
 
         if let error = error {
             logger.logError("Error discovering services: \(error.localizedDescription)")
-            if let discovery = serviceDiscoveries.removeValue(forKey: peripheralId) {
+            if let discovery = activeServiceDiscoveries[peripheralId] {
                 discovery.cleanup()
             }
-            if let future = discoverFutures.removeValue(forKey: peripheralId) {
-                future.completion(.failure(error.toPigeonError()))
+            activeServiceDiscoveries.removeValue(forKey: peripheralId)
+            discoverServicesFutures.removeAll { future in
+                if future.deviceId == peripheralId {
+                    future.result(.failure(error))
+                    return true
+                }
+                return false
             }
             return
         }
 
-        guard let discovery = serviceDiscoveries[peripheralId] else {
-            let services = peripheral.services ?? []
-            let bleServices = services.map { service -> UniversalBleService in
-                let characteristics = service.characteristics?.map { char -> UniversalBleCharacteristic in
-                    UniversalBleCharacteristic(
-                        uuid: char.uuid.uuidString,
-                        properties: char.properties.toCharacteristicProperty,
-                        descriptors: []
-                    )
-                } ?? []
-                return UniversalBleService(uuid: service.uuid.uuidString, characteristics: characteristics)
-            }
-            if let future = discoverFutures.removeValue(forKey: peripheralId) {
-                future.completion(.success(bleServices))
-            }
-            return
-        }
-
-        discovery.handleDidDiscoverServices(peripheral.services)
+        activeServiceDiscoveries[peripheralId]?.handleDidDiscoverServices(peripheral, error: error)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
+        let peripheralId = peripheral.uuid
 
         if let error = error {
             logger.logError("Error discovering characteristics: \(error.localizedDescription)")
-            if let discovery = serviceDiscoveries.removeValue(forKey: peripheralId) {
+            if let discovery = activeServiceDiscoveries[peripheralId] {
                 discovery.cleanup()
             }
-            if let future = discoverFutures.removeValue(forKey: peripheralId) {
-                future.completion(.failure(error.toPigeonError()))
+            activeServiceDiscoveries.removeValue(forKey: peripheralId)
+            discoverServicesFutures.removeAll { future in
+                if future.deviceId == peripheralId {
+                    future.result(.failure(error))
+                    return true
+                }
+                return false
             }
             return
         }
 
-        if let discovery = serviceDiscoveries[peripheralId] {
-            discovery.handleDidDiscoverCharacteristicsFor(service.characteristics, for: service)
-        }
+        activeServiceDiscoveries[peripheralId]?.handleDidDiscoverCharacteristicsFor(peripheral, service: service, error: error)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
+        let peripheralId = peripheral.uuid
 
-        if let error = error {
-            logger.logError("Error discovering descriptors: \(error.localizedDescription)")
-        }
-
-        if let discovery = serviceDiscoveries[peripheralId] {
-            discovery.handleDidDiscoverDescriptorsFor(characteristic, error: error)
-        }
+        activeServiceDiscoveries[peripheralId]?.handleDidDiscoverDescriptorsFor(peripheral, characteristic: characteristic, error: error)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
-        let key = key(peripheralId, characteristic.service?.uuid.uuidString ?? "", characteristic.uuid.uuidString)
+        let peripheralId = peripheral.uuid
+        let characteristicId = characteristic.uuid.uuidStr
+        let serviceId = characteristic.service?.uuid.uuidStr ?? ""
+
+        let isReadOperation = characteristicReadFutures.contains { future in
+            future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId
+        }
 
         if let error = error {
-            if let future = readFutures.removeValue(forKey: key) {
-                future.completion(.failure(error.toPigeonError()))
-            }
-            logger.logError("Error updating value: \(error.localizedDescription)")
-            return
-        }
-
-        guard let value = characteristic.value else {
-            if let future = readFutures.removeValue(forKey: key) {
-                future.completion(.failure(PigeonError(
-                    code: "unknown",
-                    message: "Characteristic value is nil",
-                    details: nil
-                )))
+            if isReadOperation {
+                characteristicReadFutures.removeAll { future in
+                    if future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId {
+                        future.result(.failure(error))
+                        return true
+                    }
+                    return false
+                }
+            } else {
+                logger.logError("NOTIFY_ERROR <- \(peripheralId) \(characteristicId): \(error.localizedDescription)")
             }
             return
         }
 
-        let flutterData = FlutterStandardTypedData(bytes: value)
+        if characteristic.isNotifying, let characteristicValue = characteristic.value {
+            let preview = characteristicValue.prefix(8).map { String(format: "%02X", $0) }.joined()
+            logger.logDebug("NOTIFY <- \(peripheralId) \(characteristicId) len=\(characteristicValue.count) data=\(preview)")
 
-        if let future = readFutures.removeValue(forKey: key) {
-            future.completion(.success(flutterData))
+            callbackChannel?.onValueChanged(
+                deviceId: peripheralId,
+                characteristicId: characteristicId,
+                value: FlutterStandardTypedData(bytes: characteristicValue),
+                timestamp: Int64(Date().timeIntervalSince1970 * 1000)
+            ) { _ in }
         }
 
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        sendValueChanged(
-            deviceId: peripheralId,
-            characteristicId: characteristic.uuid.uuidString,
-            value: flutterData,
-            timestamp: timestamp
-        )
+        characteristicReadFutures.removeAll { future in
+            if future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId {
+                if let value = characteristic.value {
+                    future.result(.success(FlutterStandardTypedData(bytes: value)))
+                } else {
+                    future.result(.failure(createFlutterError(code: "readFailed", message: "No value")))
+                }
+                return true
+            }
+            return false
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
-        let key = key(peripheralId, characteristic.service?.uuid.uuidString ?? "", characteristic.uuid.uuidString)
+        let peripheralId = peripheral.uuid
+        let characteristicId = characteristic.uuid.uuidStr
+        let serviceId = characteristic.service?.uuid.uuidStr ?? ""
 
-        if let error = error {
-            if let future = writeFutures.removeValue(forKey: key) {
-                future.completion(.failure(error.toPigeonError()))
+        characteristicWriteFutures.removeAll { future in
+            if future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId {
+                if let error = error {
+                    logger.logError("WRITE_FAILED <- \(peripheralId) \(characteristicId): \(error.localizedDescription)")
+                    future.result(.failure(error))
+                } else {
+                    future.result(.success(()))
+                }
+                return true
             }
-            logger.logError("Error writing value: \(error.localizedDescription)")
-            return
-        }
-
-        if let future = writeFutures.removeValue(forKey: key) {
-            future.completion(.success(()))
+            return false
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
-        let key = key(peripheralId, characteristic.service?.uuid.uuidString ?? "", characteristic.uuid.uuidString)
+        let peripheralId = peripheral.uuid
+        let characteristicId = characteristic.uuid.uuidStr
+        let serviceId = characteristic.service?.uuid.uuidStr ?? ""
 
-        if let error = error {
-            if let future = notifyFutures.removeValue(forKey: key) {
-                future.completion(.failure(error.toPigeonError()))
+        characteristicNotifyFutures.removeAll { future in
+            if future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId {
+                if let error = error {
+                    logger.logError("SET_NOTIFY_FAILED <- \(peripheralId) \(characteristicId): \(error.localizedDescription)")
+                    future.result(.failure(error))
+                } else {
+                    future.result(.success(()))
+                }
+                return true
             }
-            logger.logError("Error updating notification state: \(error.localizedDescription)")
-            return
-        }
-
-        if let future = notifyFutures.removeValue(forKey: key) {
-            future.completion(.success(()))
+            return false
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
-        let peripheralId = peripheral.identifier.uuidString
+        let peripheralId = peripheral.uuid
 
-        if let error = error {
-            if let future = rssiFutures.removeValue(forKey: peripheralId) {
-                future.completion(.failure(error.toPigeonError()))
+        rssiReadFutures.removeAll { future in
+            if future.deviceId == peripheralId {
+                if let error = error {
+                    logger.logError("READ_RSSI_FAILED <- \(peripheralId): \(error.localizedDescription)")
+                    future.result(.failure(error))
+                } else {
+                    future.result(.success(RSSI.int64Value))
+                }
+                return true
             }
-            return
-        }
-
-        if let future = rssiFutures.removeValue(forKey: peripheralId) {
-            future.completion(.success(RSSI.int64Value))
+            return false
         }
     }
 
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        let peripheralId = peripheral.uuid
+
+        characteristicWriteWithoutResponseFutures.removeAll { future in
+            if future.deviceId == peripheralId {
+                future.result(.success(()))
+                return true
+            }
+            return false
+        }
     }
 
     #if os(iOS)
     func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
-        logger.logInfo("Peripheral \(peripheral.identifier.uuidString) modified services")
+        logger.logInfo("Peripheral \(peripheral.uuid) modified services")
     }
 
     func peripheralDidUpdateName(_ peripheral: CBPeripheral) {
-        logger.logInfo("Peripheral name updated: \(peripheral.identifier.uuidString)")
+        logger.logInfo("Peripheral name updated: \(peripheral.uuid)")
     }
 
     func peripheral(_ peripheral: CBPeripheral, didReadMaximumWriteValueLengthFor maximumWriteValueLength: Int) {
         logger.logDebug("Maximum write value length: \(maximumWriteValueLength)")
     }
-    #endif
 
-    func peripheral(_ peripheral: CBPeripheral, didUpdateMTU mtu: Int) {
-        let peripheralId = peripheral.identifier.uuidString
-
-        if let future = mtuFutures.removeValue(forKey: peripheralId) {
-            future.completion(.success(Int64(mtu)))
-        }
-
-        let updated = BleConnectionParametersUpdated(
-            deviceId: peripheralId,
-            interval: 0,
-            latency: 0,
-            supervisionTimeout: 0,
-            status: 0
-        )
-        sendConnectionParametersUpdated(updated)
-    }
-
-    #if os(iOS)
     func peripheral(_ peripheral: CBPeripheral, didUpdateConnectionParameters parameters: CBConnectionParameters) {
-        let peripheralId = peripheral.identifier.uuidString
+        let peripheralId = peripheral.uuid
         logger.logDebug("Connection parameters updated for \(peripheralId): interval=\(parameters.interval), latency=\(parameters.latency), supervisionTimeout=\(parameters.supervisionTimeout)")
 
         let updated = BleConnectionParametersUpdated(
@@ -1000,4 +961,17 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
         sendConnectionParametersUpdated(updated)
     }
     #endif
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateMTU mtu: Int) {
+        let peripheralId = peripheral.uuid
+
+        let updated = BleConnectionParametersUpdated(
+            deviceId: peripheralId,
+            interval: 0,
+            latency: 0,
+            supervisionTimeout: 0,
+            status: Int64(mtu)
+        )
+        sendConnectionParametersUpdated(updated)
+    }
 }

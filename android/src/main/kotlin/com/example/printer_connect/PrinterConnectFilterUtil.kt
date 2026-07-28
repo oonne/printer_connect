@@ -1,190 +1,144 @@
 package com.example.printer_connect
 
-import android.os.Build
-import android.bluetooth.le.ScanResult
+import android.annotation.SuppressLint
+import android.bluetooth.le.ScanFilter
 import android.os.ParcelUuid
+import android.util.Log
+import java.util.UUID
 
 object PrinterConnectFilterUtil {
 
+    var scanFilter: UniversalScanFilter? = null
+    var serviceFilterUUIDS: List<UUID> = emptyList()
+
     fun filterDevice(
-        scanResult: ScanResult,
-        filter: UniversalScanFilter?,
-        allowDuplicates: Boolean = false
+        name: String?,
+        manufacturerDataList: List<UniversalManufacturerData>,
+        serviceUuids: Array<UUID>,
     ): Boolean {
-        if (filter == null) return true
+        val filter = scanFilter ?: return true
+        val hasNamePrefixFilter = filter.withNamePrefix.isNotEmpty()
+        val hasServiceFilter = filter.withServices.isNotEmpty()
+        val hasManufacturerDataFilter = filter.withManufacturerData.isNotEmpty()
 
-        val matchesName = isNameMatchingFilters(scanResult, filter.withNamePrefix)
-        val matchesServices = isServicesMatchingFilters(scanResult, filter.withServices)
-        val matchesManufacturerData = isManufacturerDataMatchingFilters(scanResult, filter.withManufacturerData)
-
-        return matchesName && matchesServices && matchesManufacturerData
-    }
-
-    fun isNameMatchingFilters(scanResult: ScanResult, namePrefixFilters: List<String>): Boolean {
-        if (namePrefixFilters.isEmpty()) return true
-
-        val deviceName = scanResult.device?.name
-        val resolvedName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            scanResult.resolvedDeviceName()
-        } else {
-            null
+        if (!hasNamePrefixFilter &&
+            !hasServiceFilter &&
+            !hasManufacturerDataFilter
+        ) {
+            return true
         }
 
-        for (prefix in namePrefixFilters) {
-            val nameToCheck = deviceName ?: resolvedName ?: return false
-            if (!nameToCheck.startsWith(prefix, ignoreCase = true)) {
-                return false
+        return hasNamePrefixFilter && isNameMatchingFilters(filter, name) ||
+                hasServiceFilter && isServicesMatchingFilters(serviceUuids) ||
+                hasManufacturerDataFilter && isManufacturerDataMatchingFilters(
+            filter,
+            manufacturerDataList
+        )
+    }
+
+    private fun isNameMatchingFilters(scanFilter: UniversalScanFilter, name: String?): Boolean {
+        val namePrefixFilter = scanFilter.withNamePrefix
+        if (namePrefixFilter.isEmpty()) {
+            return true
+        }
+        if (name.isNullOrEmpty()) {
+            return false
+        }
+        return namePrefixFilter.any { name.startsWith(it) }
+    }
+
+    private fun isServicesMatchingFilters(
+        serviceUuids: Array<UUID>,
+    ): Boolean {
+        if (serviceFilterUUIDS.isEmpty()) {
+            return true
+        }
+        if (serviceUuids.isEmpty()) {
+            return false
+        }
+        return serviceFilterUUIDS.any {
+            serviceUuids.contains(it)
+        }
+    }
+
+    private fun isManufacturerDataMatchingFilters(
+        scanFilter: UniversalScanFilter,
+        manufacturerDataList: List<UniversalManufacturerData>,
+    ): Boolean {
+        val filters = scanFilter.withManufacturerData
+        if (filters.isEmpty()) return true
+        if (manufacturerDataList.isEmpty()) return false
+        return manufacturerDataList.any { msd ->
+            filters.any { filter ->
+                msd.companyIdentifier == filter.companyIdentifier &&
+                        isDataMatching(filter.payloadPrefix, msd.data, filter.payloadMask)
             }
         }
-
-        return true
     }
 
-    fun isServicesMatchingFilters(scanResult: ScanResult, serviceUuidsFilter: List<String>): Boolean {
-        if (serviceUuidsFilter.isEmpty()) return true
-
-        val scanRecord = scanResult.scanRecord ?: return false
-        val advertisedUuids = scanRecord.serviceUuids ?: return false
-
-        val filterUuids = serviceUuidsFilter.map { it.uppercase() }.toSet()
-        val advertisedUuidStrings = advertisedUuids.map { it.toString().uppercase() }.toSet()
-
-        return advertisedUuidStrings.containsAll(filterUuids)
-    }
-
-    fun isManufacturerDataMatchingFilters(scanResult: ScanResult, manufacturerDataFilter: List<ManufacturerDataFilter>): Boolean {
-        if (manufacturerDataFilter.isEmpty()) return true
-
-        val scanRecord = scanResult.scanRecord ?: return false
-        val manufacturerDataMap = scanRecord.manufacturerSpecificData ?: return false
-
-        for (filterItem in manufacturerDataFilter) {
-            val companyId = filterItem.companyIdentifier.toInt()
-            val data = manufacturerDataMap[companyId] ?: return false
-
-            val payloadPrefix = filterItem.payloadPrefix
-            if (payloadPrefix != null && payloadPrefix.isNotEmpty()) {
-                if (data.size < payloadPrefix.size) return false
-
-                val payloadMask = filterItem.payloadMask
-                for (i in payloadPrefix.indices) {
-                    val maskByte = if (payloadMask != null && i < payloadMask.size) {
-                        payloadMask[i].toInt() and 0xFF
-                    } else {
-                        0xFF
-                    }
-                    if (maskByte == 0) continue
-                    if (data[i] != payloadPrefix[i]) return false
-                }
-            }
+    private fun isDataMatching(
+        filterData: ByteArray?,
+        deviceData: ByteArray,
+        filterMask: ByteArray?,
+    ): Boolean {
+        if (filterData == null) return true
+        if (filterData.size > deviceData.size) return false
+        val mask = filterMask ?: ByteArray(filterData.size) { 0xFF.toByte() }
+        if (filterData.size != mask.size) return false
+        return filterData.indices.all { i ->
+            (filterData[i] and mask[i]) == (deviceData[i] and mask[i])
         }
-
-        return true
     }
 
     fun UniversalScanFilter?.usesCustomFilters(): Boolean {
         if (this == null) return false
-        return withNamePrefix.isNotEmpty() ||
-            withServices.isNotEmpty() ||
-            withManufacturerData.isNotEmpty()
+        return withNamePrefix.isNotEmpty()
     }
 
-    fun List<UniversalScanFilter>.toScanFilters(): List<android.bluetooth.le.ScanFilter> {
-        val result = mutableListOf<android.bluetooth.le.ScanFilter>()
+    fun UniversalScanFilter.toScanFilters(serviceUuids: List<UUID>): List<ScanFilter> {
+        val scanFilters = mutableListOf<ScanFilter>()
 
-        for (filter in this) {
-            if (filter.withServices.size <= 1 &&
-                filter.withManufacturerData.size <= 1 &&
-                filter.withNamePrefix.size <= 1
-            ) {
-                val builder = android.bluetooth.le.ScanFilter.Builder()
-
-                filter.withNamePrefix.firstOrNull()?.let { prefix ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        builder.setDeviceName(prefix)
-                    }
-                }
-
-                filter.withServices.firstOrNull()?.let { uuidStr ->
-                    try {
-                        val uuid = java.util.UUID.fromString(uuidStr)
-                        builder.setServiceUuid(ParcelUuid(uuid))
-                    } catch (e: Exception) {
-                        PrinterConnectLogger.logWarning("Invalid service UUID: $uuidStr")
-                    }
-                }
-
-                filter.withManufacturerData.firstOrNull()?.let { mfr ->
-                    val companyId = mfr.companyIdentifier.toInt()
-                    val payloadPrefix = mfr.payloadPrefix
-                    val payloadMask = mfr.payloadMask
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (payloadPrefix != null && payloadPrefix.isNotEmpty()) {
-                            if (payloadMask != null && payloadMask.isNotEmpty()) {
-                                builder.setManufacturerData(companyId, payloadPrefix, payloadMask)
-                            } else {
-                                builder.setManufacturerData(companyId, payloadPrefix)
-                            }
-                        }
-                    }
-                }
-
-                try {
-                    result.add(builder.build())
-                } catch (e: Exception) {
-                    PrinterConnectLogger.logWarning("Failed to build scan filter: ${e.message}")
-                }
-            } else {
-                for (prefix in filter.withNamePrefix) {
-                    val builder = android.bluetooth.le.ScanFilter.Builder()
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        builder.setDeviceName(prefix)
-                    }
-                    try {
-                        result.add(builder.build())
-                    } catch (e: Exception) {
-                        PrinterConnectLogger.logWarning("Failed to build scan filter: ${e.message}")
-                    }
-                }
-
-                for (uuidStr in filter.withServices) {
-                    val builder = android.bluetooth.le.ScanFilter.Builder()
-                    try {
-                        val uuid = java.util.UUID.fromString(uuidStr)
-                        builder.setServiceUuid(ParcelUuid(uuid))
-                    } catch (e: Exception) {
-                        PrinterConnectLogger.logWarning("Invalid service UUID: $uuidStr")
-                    }
-                    try {
-                        result.add(builder.build())
-                    } catch (e: Exception) {
-                        PrinterConnectLogger.logWarning("Failed to build scan filter: ${e.message}")
-                    }
-                }
-
-                for (mfr in filter.withManufacturerData) {
-                    val builder = android.bluetooth.le.ScanFilter.Builder()
-                    val companyId = mfr.companyIdentifier.toInt()
-                    val payloadPrefix = mfr.payloadPrefix
-                    val payloadMask = mfr.payloadMask
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        if (payloadPrefix != null && payloadPrefix.isNotEmpty()) {
-                            if (payloadMask != null && payloadMask.isNotEmpty()) {
-                                builder.setManufacturerData(companyId, payloadPrefix, payloadMask)
-                            } else {
-                                builder.setManufacturerData(companyId, payloadPrefix)
-                            }
-                        }
-                    }
-                    try {
-                        result.add(builder.build())
-                    } catch (e: Exception) {
-                        PrinterConnectLogger.logWarning("Failed to build scan filter: ${e.message}")
-                    }
-                }
+        for (service in serviceUuids) {
+            try {
+                scanFilters.add(
+                    ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()
+                )
+            } catch (e: Exception) {
+                PrinterConnectLogger.logError("Invalid service UUID: $service")
             }
         }
 
-        return result
+        for (manufacturerData in this.withManufacturerData) {
+            try {
+                val data = manufacturerData.payloadPrefix ?: ByteArray(0)
+                val mask = manufacturerData.payloadMask
+                if (mask == null) {
+                    scanFilters.add(
+                        ScanFilter.Builder().setManufacturerData(
+                            manufacturerData.companyIdentifier.toInt(), data
+                        ).build()
+                    )
+                } else {
+                    scanFilters.add(
+                        ScanFilter.Builder().setManufacturerData(
+                            manufacturerData.companyIdentifier.toInt(), data, mask
+                        ).build()
+                    )
+                }
+            } catch (e: Exception) {
+                PrinterConnectLogger.logError("Invalid manufacturerData: ${manufacturerData.companyIdentifier}")
+            }
+        }
+
+        return scanFilters
     }
+}
+
+@SuppressLint("MissingPermission")
+fun ScanResult.isDeviceMatchingFilter(filter: UniversalScanFilter?): Boolean {
+    if (filter == null) return true
+    val name = device.name
+    val manufacturerDataList = manufacturerDataList()
+    val serviceUuids = scanRecord?.serviceUuids?.toTypedArray() ?: arrayOf()
+    return PrinterConnectFilterUtil.filterDevice(name, manufacturerDataList, serviceUuids)
 }

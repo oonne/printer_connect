@@ -94,6 +94,16 @@ extension CBPeripheral {
         }
         return nil
     }
+
+    func getCharacteristic(_ characteristicUUID: String, of serviceUUID: String) -> CBCharacteristic? {
+        guard let services = services else { return nil }
+        for service in services {
+            if service.uuid.uuidString == serviceUUID {
+                return service.characteristics?.first(where: { $0.uuid.uuidString == characteristicUUID })
+            }
+        }
+        return nil
+    }
 }
 
 #if os(iOS)
@@ -104,7 +114,33 @@ extension FlutterStandardTypedData {
 }
 #endif
 
+extension String {
+    func toData() -> Data {
+        return Data(Array(hexStringToBytes(self)))
+    }
+
+    private func hexStringToBytes(_ hexString: String) -> [UInt8] {
+        var bytes: [UInt8] = []
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let nextIndex = hexString.index(index, offsetBy: 2)
+            if nextIndex <= hexString.endIndex {
+                let byteString = String(hexString[index..<nextIndex])
+                if let byte = UInt8(byteString, radix: 16) {
+                    bytes.append(byte)
+                }
+            }
+            index = nextIndex
+        }
+        return bytes
+    }
+}
+
 extension Data {
+    func toData() -> Data {
+        return self
+    }
+
     func toInt64List() -> [Int64] {
         return map { Int64($0) }
     }
@@ -115,58 +151,64 @@ extension Data {
 }
 
 class CharacteristicReadFuture {
-    let completion: (Result<FlutterStandardTypedData, PigeonError>) -> Void
-    init(completion: @escaping (Result<FlutterStandardTypedData, PigeonError>) -> Void) {
-        self.completion = completion
+    let deviceId: String
+    let characteristicId: String
+    let serviceId: String
+    let result: (Result<FlutterStandardTypedData, Error>) -> Void
+
+    init(deviceId: String, characteristicId: String, serviceId: String, result: @escaping (Result<FlutterStandardTypedData, Error>) -> Void) {
+        self.deviceId = deviceId
+        self.characteristicId = characteristicId
+        self.serviceId = serviceId
+        self.result = result
     }
 }
 
 class CharacteristicWriteFuture {
-    let completion: (Result<Void, PigeonError>) -> Void
-    init(completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        self.completion = completion
+    let deviceId: String
+    let characteristicId: String
+    let serviceId: String
+    let result: (Result<Void, Error>) -> Void
+
+    init(deviceId: String, characteristicId: String, serviceId: String, result: @escaping (Result<Void, Error>) -> Void) {
+        self.deviceId = deviceId
+        self.characteristicId = characteristicId
+        self.serviceId = serviceId
+        self.result = result
     }
 }
 
 class CharacteristicNotifyFuture {
-    let completion: (Result<Void, PigeonError>) -> Void
-    init(completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        self.completion = completion
+    let deviceId: String
+    let characteristicId: String
+    let serviceId: String
+    let result: (Result<Void, Error>) -> Void
+
+    init(deviceId: String, characteristicId: String, serviceId: String, result: @escaping (Result<Void, Error>) -> Void) {
+        self.deviceId = deviceId
+        self.characteristicId = characteristicId
+        self.serviceId = serviceId
+        self.result = result
     }
 }
 
 class DiscoverServicesFuture {
-    let completion: (Result<[UniversalBleService], PigeonError>) -> Void
-    init(completion: @escaping (Result<[UniversalBleService], PigeonError>) -> Void) {
-        self.completion = completion
+    let deviceId: String
+    let result: (Result<[UniversalBleService], Error>) -> Void
+
+    init(deviceId: String, result: @escaping (Result<[UniversalBleService], Error>) -> Void) {
+        self.deviceId = deviceId
+        self.result = result
     }
 }
 
 class RssiReadFuture {
-    let completion: (Result<Int64, PigeonError>) -> Void
-    init(completion: @escaping (Result<Int64, PigeonError>) -> Void) {
-        self.completion = completion
-    }
-}
+    let deviceId: String
+    let result: (Result<Int64, Error>) -> Void
 
-class ConnectionStateFuture {
-    let completion: (Result<Void, PigeonError>) -> Void
-    init(completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        self.completion = completion
-    }
-}
-
-class PairedStateFuture {
-    let completion: (Result<Bool, PigeonError>) -> Void
-    init(completion: @escaping (Result<Bool, PigeonError>) -> Void) {
-        self.completion = completion
-    }
-}
-
-class MtuFuture {
-    let completion: (Result<Int64, PigeonError>) -> Void
-    init(completion: @escaping (Result<Int64, PigeonError>) -> Void) {
-        self.completion = completion
+    init(deviceId: String, result: @escaping (Result<Int64, Error>) -> Void) {
+        self.deviceId = deviceId
+        self.result = result
     }
 }
 
@@ -180,10 +222,21 @@ extension String {
         return peripherals.first
     }
 
-    func findOrConnectPeripheral(in manager: CBCentralManager) -> CBPeripheral? {
-        if let peripheral = findPeripheral(in: manager) {
-            return peripheral
+    func getPeripheral(manager: CBCentralManager) throws -> CBPeripheral {
+        guard let peripheral = findPeripheral(in: manager) else {
+            throw createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(self)")
         }
-        return nil
+        return peripheral
+    }
+}
+
+extension [String] {
+    func toCBUUID() throws -> [CBUUID] {
+        return try compactMap { serviceUUID in
+            guard UUID(uuidString: serviceUUID) != nil else {
+                throw createFlutterError(code: "invalidServiceUuid", message: "Invalid service UUID:\(serviceUUID)")
+            }
+            return CBUUID(string: serviceUUID)
+        }
     }
 }
