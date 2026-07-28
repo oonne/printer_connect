@@ -10,7 +10,30 @@ import 'package:pigeon/pigeon.dart';
     swiftOptions: SwiftOptions(),
   ),
 )
-enum BleLogLevel { verbose, debug, info, warning, error, wtf, none }
+
+class UniversalBleScanResult {
+  final String deviceId;
+  final String? name;
+  final bool? isPaired;
+  final int? rssi;
+  final List<UniversalManufacturerData>? manufacturerDataList;
+  final Map<String, Uint8List>? serviceData;
+  final List<String>? services;
+  final int? timestamp;
+
+  UniversalBleScanResult({
+    required this.name,
+    required this.deviceId,
+    required this.isPaired,
+    required this.rssi,
+    required this.manufacturerDataList,
+    required this.serviceData,
+    required this.services,
+    required this.timestamp,
+  });
+}
+
+enum BleLogLevel { none, error, warning, info, debug, verbose }
 
 enum AvailabilityState {
   unknown,
@@ -22,9 +45,9 @@ enum AvailabilityState {
 }
 
 enum BleConnectionState {
+  connected,
   disconnected,
   connecting,
-  connected,
   disconnecting,
 }
 
@@ -35,9 +58,8 @@ enum BleInputProperty {
 }
 
 enum BleOutputProperty {
-  none,
-  write,
-  writeWithoutResponse,
+  withResponse,
+  withoutResponse,
 }
 
 enum BleConnectionPriority {
@@ -47,266 +69,231 @@ enum BleConnectionPriority {
 }
 
 enum AndroidScanMode {
-  lowPowered,
   balanced,
   lowLatency,
+  lowPower,
+  opportunistic,
 }
 
 enum AndroidScanCallbackType {
-  default_,
+  allMatches,
   firstMatch,
-  lose,
-  matched,
+  matchLost,
+  allMatchesAutoBatch,
 }
 
 enum AndroidScanMatchMode {
-  default_,
+  aggressive,
   sticky,
 }
 
 enum AndroidScanNumOfMatches {
   one,
   few,
-  many,
+  max,
 }
 
 enum CharacteristicProperty {
+  broadcast,
   read,
-  write,
   writeWithoutResponse,
+  write,
   notify,
   indicate,
-  broadcast,
-  extendedSbleProps,
-  signedWrite,
-}
-
-class UniversalBleScanResult {
-  UniversalBleScanResult({
-    required this.peripheralId,
-    this.name,
-    required this.rssi,
-    this.manufacturerData,
-    this.serviceData,
-    this.serviceUuids,
-    this.txPowerLevel,
-  });
-
-  String peripheralId;
-  String? name;
-  int rssi;
-  List<UniversalManufacturerData>? manufacturerData;
-  List<int>? serviceData;
-  List<String>? serviceUuids;
-  int? txPowerLevel;
-}
-
-class UniversalManufacturerData {
-  UniversalManufacturerData({required this.id, required this.data});
-
-  int id;
-  List<int> data;
+  authenticatedSignedWrites,
+  extendedProperties,
 }
 
 class UniversalBleService {
-  UniversalBleService({required this.uuid, required this.isPrimary});
-
   String uuid;
-  bool isPrimary;
+  List<UniversalBleCharacteristic>? characteristics;
+
+  UniversalBleService(this.uuid, this.characteristics);
 }
 
 class UniversalBleCharacteristic {
-  UniversalBleCharacteristic({
-    required this.uuid,
-    required this.properties,
-    this.value,
-  });
-
   String uuid;
   List<CharacteristicProperty> properties;
-  List<int>? value;
+  List<UniversalBleDescriptor> descriptors;
+
+  UniversalBleCharacteristic(this.uuid, this.properties, this.descriptors);
 }
 
 class UniversalBleDescriptor {
-  UniversalBleDescriptor({required this.uuid, this.value});
-
   String uuid;
-  List<int>? value;
+
+  UniversalBleDescriptor(this.uuid);
+}
+
+class BleConnectionParametersUpdated {
+  final String deviceId;
+  final int interval;
+  final int latency;
+  final int supervisionTimeout;
+  final int status;
+
+  BleConnectionParametersUpdated({
+    required this.deviceId,
+    required this.interval,
+    required this.latency,
+    required this.supervisionTimeout,
+    required this.status,
+  });
 }
 
 class AndroidOptions {
+  bool? requestLocationPermission;
+  AndroidScanMode? scanMode;
+  int? reportDelayMillis;
+  List<AndroidScanCallbackType>? callbackType;
+  AndroidScanMatchMode? matchMode;
+  AndroidScanNumOfMatches? numOfMatches;
+  bool? legacy;
+
   AndroidOptions({
+    this.requestLocationPermission,
     this.scanMode,
+    this.reportDelayMillis,
     this.callbackType,
     this.matchMode,
     this.numOfMatches,
+    this.legacy,
   });
-
-  AndroidScanMode? scanMode;
-  AndroidScanCallbackType? callbackType;
-  AndroidScanMatchMode? matchMode;
-  AndroidScanNumOfMatches? numOfMatches;
 }
 
 class UniversalScanConfig {
-  UniversalScanConfig({this.scanFilters, this.androidOptions});
+  AndroidOptions? android;
 
-  List<UniversalScanFilter>? scanFilters;
-  AndroidOptions? androidOptions;
+  UniversalScanConfig(this.android);
 }
 
 class UniversalScanFilter {
-  UniversalScanFilter({
-    this.withServices,
-    this.withManufacturerData,
-    this.withLocalName,
-    this.withLocalNamePrefix,
-    this.withDeviceId,
-    this.exclusionFilters,
-  });
+  final List<String> withServices;
+  final List<String> withNamePrefix;
+  final List<ManufacturerDataFilter> withManufacturerData;
 
-  List<String>? withServices;
-  List<ManufacturerDataFilter>? withManufacturerData;
-  String? withLocalName;
-  List<String>? withLocalNamePrefix;
-  List<String>? withDeviceId;
-  List<UniversalScanFilter>? exclusionFilters;
+  UniversalScanFilter(
+    this.withServices,
+    this.withNamePrefix,
+    this.withManufacturerData,
+  );
 }
 
 class ManufacturerDataFilter {
-  ManufacturerDataFilter({
-    required this.companyId,
-    this.data,
-    this.mask,
-  });
+  int companyIdentifier;
+  Uint8List? payloadPrefix;
+  Uint8List? payloadMask;
 
-  int companyId;
-  List<int>? data;
-  List<int>? mask;
+  ManufacturerDataFilter({
+    required this.companyIdentifier,
+    this.payloadPrefix,
+    this.payloadMask,
+  });
+}
+
+class UniversalManufacturerData {
+  final int companyIdentifier;
+  final Uint8List data;
+
+  UniversalManufacturerData({
+    required this.companyIdentifier,
+    required this.data,
+  });
 }
 
 class AppleConnectionOptions {
+  bool? notifyOnConnection;
+  bool? notifyOnDisconnection;
+  bool? notifyOnNotification;
+
   AppleConnectionOptions({
-    this.shouldRestoreState,
     this.notifyOnConnection,
     this.notifyOnDisconnection,
     this.notifyOnNotification,
   });
-
-  bool? shouldRestoreState;
-  bool? notifyOnConnection;
-  bool? notifyOnDisconnection;
-  bool? notifyOnNotification;
 }
 
 class ConnectionPlatformConfig {
-  ConnectionPlatformConfig({this.apple});
-
   AppleConnectionOptions? apple;
-}
 
-class BleConnectionParametersUpdated {
-  BleConnectionParametersUpdated({
-    required this.mtu,
-    required this.deviceId,
-    this.interval,
-    this.latency,
-    this.supervisionTimeout,
-    this.status,
-  });
-
-  int mtu;
-  String deviceId;
-  int? interval;
-  int? latency;
-  int? supervisionTimeout;
-  int? status;
+  ConnectionPlatformConfig({this.apple});
 }
 
 @HostApi()
 abstract class UniversalBlePlatformChannel {
   @async
   AvailabilityState getBluetoothAvailabilityState();
+  bool hasPermissions(bool withAndroidFineLocation);
   @async
-  bool hasPermissions();
+  void requestPermissions(bool withAndroidFineLocation);
   @async
-  bool requestPermissions();
+  bool enableBluetooth();
   @async
-  void enableBluetooth();
-  @async
-  void disableBluetooth();
-  @async
-  void startScan(
-    List<UniversalScanFilter> filters,
-    AndroidOptions androidOptions,
-  );
-  @async
+  bool disableBluetooth();
+  void startScan(UniversalScanFilter? filter, UniversalScanConfig? config);
   void stopScan();
-  @async
   bool isScanning();
-  @async
-  void connect(String peripheralId, ConnectionPlatformConfig config);
-  @async
-  void disconnect(String peripheralId);
+  void connect(
+    String deviceId, {
+    bool? autoConnect,
+    ConnectionPlatformConfig? platformConfig,
+  });
+  void disconnect(String deviceId);
   @async
   void setNotifiable(
-    String peripheralId,
-    String serviceId,
-    String characteristicId,
-    BleInputProperty value,
+    String deviceId,
+    String service,
+    String characteristic,
+    BleInputProperty bleInputProperty,
   );
   @async
-  List<UniversalBleService> discoverServices(String peripheralId);
-  @async
-  UniversalBleCharacteristic readValue(
-    String peripheralId,
-    String serviceId,
-    String characteristicId,
+  List<UniversalBleService> discoverServices(
+    String deviceId,
+    bool withDescriptors,
   );
   @async
-  int requestMtu(String peripheralId, int mtu);
+  Uint8List readValue(String deviceId, String service, String characteristic);
+  @async
+  int requestMtu(String deviceId, int expectedMtu);
   @async
   void writeValue(
-    String peripheralId,
-    String serviceId,
-    String characteristicId,
-    List<int> value,
+    String deviceId,
+    String service,
+    String characteristic,
+    Uint8List value,
     BleOutputProperty bleOutputProperty,
   );
   @async
-  bool isPaired(String peripheralId);
+  bool isPaired(String deviceId);
   @async
-  void pair(String peripheralId);
+  bool pair(String deviceId);
+  void unPair(String deviceId);
   @async
-  void unPair(String peripheralId);
+  List<UniversalBleScanResult> getSystemDevices(List<String> withServices);
+  BleConnectionState getConnectionState(String deviceId);
   @async
-  List<UniversalBleScanResult> getSystemDevices({List<String>? withServices});
-  @async
-  BleConnectionState getConnectionState(String peripheralId);
-  @async
-  int readRssi(String peripheralId);
+  int readRssi(String deviceId);
   @async
   void requestConnectionPriority(
-    String peripheralId,
+    String deviceId,
     BleConnectionPriority priority,
   );
-  @async
-  void setLogLevel(BleLogLevel level);
+  void setLogLevel(BleLogLevel logLevel);
 }
 
 @FlutterApi()
 abstract class UniversalBleCallbackChannel {
   void onAvailabilityChanged(AvailabilityState state);
-  void onPairStateChange(String peripheralId, bool isPaired);
+  void onPairStateChange(String deviceId, bool isPaired, String? error);
   void onScanResult(UniversalBleScanResult result);
   void onValueChanged(
-    String peripheralId,
-    String serviceId,
+    String deviceId,
     String characteristicId,
-    List<int> value,
+    Uint8List value,
+    int? timestamp,
   );
-  void onConnectionChanged(String peripheralId, BleConnectionState state);
-  void onConnectionParametersUpdated(BleConnectionParametersUpdated result);
+  void onConnectionChanged(String deviceId, bool connected, String? error);
+  void onConnectionParametersUpdated(BleConnectionParametersUpdated update);
 }
 
 void main() {

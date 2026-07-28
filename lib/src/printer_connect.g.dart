@@ -108,13 +108,12 @@ int _deepHash(Object? value) {
 
 
 enum BleLogLevel {
-  verbose,
-  debug,
-  info,
-  warning,
-  error,
-  wtf,
   none,
+  error,
+  warning,
+  info,
+  debug,
+  verbose,
 }
 
 enum AvailabilityState {
@@ -127,9 +126,9 @@ enum AvailabilityState {
 }
 
 enum BleConnectionState {
+  connected,
   disconnected,
   connecting,
-  connected,
   disconnecting,
 }
 
@@ -140,9 +139,8 @@ enum BleInputProperty {
 }
 
 enum BleOutputProperty {
-  none,
-  write,
-  writeWithoutResponse,
+  withResponse,
+  withoutResponse,
 }
 
 enum BleConnectionPriority {
@@ -152,74 +150,79 @@ enum BleConnectionPriority {
 }
 
 enum AndroidScanMode {
-  lowPowered,
   balanced,
   lowLatency,
+  lowPower,
+  opportunistic,
 }
 
 enum AndroidScanCallbackType {
-  default_,
+  allMatches,
   firstMatch,
-  lose,
-  matched,
+  matchLost,
+  allMatchesAutoBatch,
 }
 
 enum AndroidScanMatchMode {
-  default_,
+  aggressive,
   sticky,
 }
 
 enum AndroidScanNumOfMatches {
   one,
   few,
-  many,
+  max,
 }
 
 enum CharacteristicProperty {
+  broadcast,
   read,
-  write,
   writeWithoutResponse,
+  write,
   notify,
   indicate,
-  broadcast,
-  extendedSbleProps,
-  signedWrite,
+  authenticatedSignedWrites,
+  extendedProperties,
 }
 
 class UniversalBleScanResult {
   UniversalBleScanResult({
-    required this.peripheralId,
+    required this.deviceId,
     this.name,
-    required this.rssi,
-    this.manufacturerData,
+    this.isPaired,
+    this.rssi,
+    this.manufacturerDataList,
     this.serviceData,
-    this.serviceUuids,
-    this.txPowerLevel,
+    this.services,
+    this.timestamp,
   });
 
-  String peripheralId;
+  String deviceId;
 
   String? name;
 
-  int rssi;
+  bool? isPaired;
 
-  List<UniversalManufacturerData>? manufacturerData;
+  int? rssi;
 
-  List<int>? serviceData;
+  List<UniversalManufacturerData>? manufacturerDataList;
 
-  List<String>? serviceUuids;
+  Map<String, Uint8List>? serviceData;
 
-  int? txPowerLevel;
+  List<String>? services;
+
+  int? timestamp;
 
   List<Object?> _toList() {
     return <Object?>[
-      peripheralId,
+      deviceId,
       name,
+      isPaired,
       rssi,
-      manufacturerData,
+      manufacturerDataList,
       serviceData,
-      serviceUuids,
-      txPowerLevel,
+      services,
+      timestamp,
     ];
   }
 
@@ -229,13 +232,14 @@ class UniversalBleScanResult {
   static UniversalBleScanResult decode(Object result) {
     result as List<Object?>;
     return UniversalBleScanResult(
-      peripheralId: result[0]! as String,
+      deviceId: result[0]! as String,
       name: result[1] as String?,
-      rssi: result[2]! as int,
-      manufacturerData: (result[3] as List<Object?>?)?.cast<UniversalManufacturerData>(),
-      serviceData: (result[4] as List<Object?>?)?.cast<int>(),
-      serviceUuids: (result[5] as List<Object?>?)?.cast<String>(),
-      txPowerLevel: result[6] as int?,
+      isPaired: result[2] as bool?,
+      rssi: result[3] as int?,
+      manufacturerDataList: (result[4] as List<Object?>?)?.cast<UniversalManufacturerData>(),
+      serviceData: (result[5] as Map<Object?, Object?>?)?.cast<String, Uint8List>(),
+      services: (result[6] as List<Object?>?)?.cast<String>(),
+      timestamp: result[7] as int?,
     );
   }
 
@@ -248,52 +252,7 @@ class UniversalBleScanResult {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(peripheralId, other.peripheralId) && _deepEquals(name, other.name) && _deepEquals(rssi, other.rssi) && _deepEquals(manufacturerData, other.manufacturerData) && _deepEquals(serviceData, other.serviceData) && _deepEquals(serviceUuids, other.serviceUuids) && _deepEquals(txPowerLevel, other.txPowerLevel);
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
-}
-
-class UniversalManufacturerData {
-  UniversalManufacturerData({
-    required this.id,
-    required this.data,
-  });
-
-  int id;
-
-  List<int> data;
-
-  List<Object?> _toList() {
-    return <Object?>[
-      id,
-      data,
-    ];
-  }
-
-  Object encode() {
-    return _toList();  }
-
-  static UniversalManufacturerData decode(Object result) {
-    result as List<Object?>;
-    return UniversalManufacturerData(
-      id: result[0]! as int,
-      data: (result[1]! as List<Object?>).cast<int>(),
-    );
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (other is! UniversalManufacturerData || other.runtimeType != runtimeType) {
-      return false;
-    }
-    if (identical(this, other)) {
-      return true;
-    }
-    return _deepEquals(id, other.id) && _deepEquals(data, other.data);
+    return _deepEquals(deviceId, other.deviceId) && _deepEquals(name, other.name) && _deepEquals(isPaired, other.isPaired) && _deepEquals(rssi, other.rssi) && _deepEquals(manufacturerDataList, other.manufacturerDataList) && _deepEquals(serviceData, other.serviceData) && _deepEquals(services, other.services) && _deepEquals(timestamp, other.timestamp);
   }
 
   @override
@@ -304,17 +263,17 @@ class UniversalManufacturerData {
 class UniversalBleService {
   UniversalBleService({
     required this.uuid,
-    required this.isPrimary,
+    this.characteristics,
   });
 
   String uuid;
 
-  bool isPrimary;
+  List<UniversalBleCharacteristic>? characteristics;
 
   List<Object?> _toList() {
     return <Object?>[
       uuid,
-      isPrimary,
+      characteristics,
     ];
   }
 
@@ -325,7 +284,7 @@ class UniversalBleService {
     result as List<Object?>;
     return UniversalBleService(
       uuid: result[0]! as String,
-      isPrimary: result[1]! as bool,
+      characteristics: (result[1] as List<Object?>?)?.cast<UniversalBleCharacteristic>(),
     );
   }
 
@@ -338,7 +297,7 @@ class UniversalBleService {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(uuid, other.uuid) && _deepEquals(isPrimary, other.isPrimary);
+    return _deepEquals(uuid, other.uuid) && _deepEquals(characteristics, other.characteristics);
   }
 
   @override
@@ -350,20 +309,20 @@ class UniversalBleCharacteristic {
   UniversalBleCharacteristic({
     required this.uuid,
     required this.properties,
-    this.value,
+    required this.descriptors,
   });
 
   String uuid;
 
   List<CharacteristicProperty> properties;
 
-  List<int>? value;
+  List<UniversalBleDescriptor> descriptors;
 
   List<Object?> _toList() {
     return <Object?>[
       uuid,
       properties,
-      value,
+      descriptors,
     ];
   }
 
@@ -375,7 +334,7 @@ class UniversalBleCharacteristic {
     return UniversalBleCharacteristic(
       uuid: result[0]! as String,
       properties: (result[1]! as List<Object?>).cast<CharacteristicProperty>(),
-      value: (result[2] as List<Object?>?)?.cast<int>(),
+      descriptors: (result[2]! as List<Object?>).cast<UniversalBleDescriptor>(),
     );
   }
 
@@ -388,7 +347,7 @@ class UniversalBleCharacteristic {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(uuid, other.uuid) && _deepEquals(properties, other.properties) && _deepEquals(value, other.value);
+    return _deepEquals(uuid, other.uuid) && _deepEquals(properties, other.properties) && _deepEquals(descriptors, other.descriptors);
   }
 
   @override
@@ -399,17 +358,13 @@ class UniversalBleCharacteristic {
 class UniversalBleDescriptor {
   UniversalBleDescriptor({
     required this.uuid,
-    this.value,
   });
 
   String uuid;
 
-  List<int>? value;
-
   List<Object?> _toList() {
     return <Object?>[
       uuid,
-      value,
     ];
   }
 
@@ -420,7 +375,6 @@ class UniversalBleDescriptor {
     result as List<Object?>;
     return UniversalBleDescriptor(
       uuid: result[0]! as String,
-      value: (result[1] as List<Object?>?)?.cast<int>(),
     );
   }
 
@@ -433,7 +387,67 @@ class UniversalBleDescriptor {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(uuid, other.uuid) && _deepEquals(value, other.value);
+    return _deepEquals(uuid, other.uuid);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class BleConnectionParametersUpdated {
+  BleConnectionParametersUpdated({
+    required this.deviceId,
+    required this.interval,
+    required this.latency,
+    required this.supervisionTimeout,
+    required this.status,
+  });
+
+  String deviceId;
+
+  int interval;
+
+  int latency;
+
+  int supervisionTimeout;
+
+  int status;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      deviceId,
+      interval,
+      latency,
+      supervisionTimeout,
+      status,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static BleConnectionParametersUpdated decode(Object result) {
+    result as List<Object?>;
+    return BleConnectionParametersUpdated(
+      deviceId: result[0]! as String,
+      interval: result[1]! as int,
+      latency: result[2]! as int,
+      supervisionTimeout: result[3]! as int,
+      status: result[4]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! BleConnectionParametersUpdated || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(deviceId, other.deviceId) && _deepEquals(interval, other.interval) && _deepEquals(latency, other.latency) && _deepEquals(supervisionTimeout, other.supervisionTimeout) && _deepEquals(status, other.status);
   }
 
   @override
@@ -443,26 +457,38 @@ class UniversalBleDescriptor {
 
 class AndroidOptions {
   AndroidOptions({
+    this.requestLocationPermission,
     this.scanMode,
+    this.reportDelayMillis,
     this.callbackType,
     this.matchMode,
     this.numOfMatches,
+    this.legacy,
   });
+
+  bool? requestLocationPermission;
 
   AndroidScanMode? scanMode;
 
-  AndroidScanCallbackType? callbackType;
+  int? reportDelayMillis;
+
+  List<AndroidScanCallbackType>? callbackType;
 
   AndroidScanMatchMode? matchMode;
 
   AndroidScanNumOfMatches? numOfMatches;
 
+  bool? legacy;
+
   List<Object?> _toList() {
     return <Object?>[
+      requestLocationPermission,
       scanMode,
+      reportDelayMillis,
       callbackType,
       matchMode,
       numOfMatches,
+      legacy,
     ];
   }
 
@@ -472,10 +498,13 @@ class AndroidOptions {
   static AndroidOptions decode(Object result) {
     result as List<Object?>;
     return AndroidOptions(
-      scanMode: result[0] as AndroidScanMode?,
-      callbackType: result[1] as AndroidScanCallbackType?,
-      matchMode: result[2] as AndroidScanMatchMode?,
-      numOfMatches: result[3] as AndroidScanNumOfMatches?,
+      requestLocationPermission: result[0] as bool?,
+      scanMode: result[1] as AndroidScanMode?,
+      reportDelayMillis: result[2] as int?,
+      callbackType: (result[3] as List<Object?>?)?.cast<AndroidScanCallbackType>(),
+      matchMode: result[4] as AndroidScanMatchMode?,
+      numOfMatches: result[5] as AndroidScanNumOfMatches?,
+      legacy: result[6] as bool?,
     );
   }
 
@@ -488,7 +517,7 @@ class AndroidOptions {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(scanMode, other.scanMode) && _deepEquals(callbackType, other.callbackType) && _deepEquals(matchMode, other.matchMode) && _deepEquals(numOfMatches, other.numOfMatches);
+    return _deepEquals(requestLocationPermission, other.requestLocationPermission) && _deepEquals(scanMode, other.scanMode) && _deepEquals(reportDelayMillis, other.reportDelayMillis) && _deepEquals(callbackType, other.callbackType) && _deepEquals(matchMode, other.matchMode) && _deepEquals(numOfMatches, other.numOfMatches) && _deepEquals(legacy, other.legacy);
   }
 
   @override
@@ -498,18 +527,14 @@ class AndroidOptions {
 
 class UniversalScanConfig {
   UniversalScanConfig({
-    this.scanFilters,
-    this.androidOptions,
+    this.android,
   });
 
-  List<UniversalScanFilter>? scanFilters;
-
-  AndroidOptions? androidOptions;
+  AndroidOptions? android;
 
   List<Object?> _toList() {
     return <Object?>[
-      scanFilters,
-      androidOptions,
+      android,
     ];
   }
 
@@ -519,8 +544,7 @@ class UniversalScanConfig {
   static UniversalScanConfig decode(Object result) {
     result as List<Object?>;
     return UniversalScanConfig(
-      scanFilters: (result[0] as List<Object?>?)?.cast<UniversalScanFilter>(),
-      androidOptions: result[1] as AndroidOptions?,
+      android: result[0] as AndroidOptions?,
     );
   }
 
@@ -533,7 +557,7 @@ class UniversalScanConfig {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(scanFilters, other.scanFilters) && _deepEquals(androidOptions, other.androidOptions);
+    return _deepEquals(android, other.android);
   }
 
   @override
@@ -543,34 +567,22 @@ class UniversalScanConfig {
 
 class UniversalScanFilter {
   UniversalScanFilter({
-    this.withServices,
-    this.withManufacturerData,
-    this.withLocalName,
-    this.withLocalNamePrefix,
-    this.withDeviceId,
-    this.exclusionFilters,
+    required this.withServices,
+    required this.withNamePrefix,
+    required this.withManufacturerData,
   });
 
-  List<String>? withServices;
+  List<String> withServices;
 
-  List<ManufacturerDataFilter>? withManufacturerData;
+  List<String> withNamePrefix;
 
-  String? withLocalName;
-
-  List<String>? withLocalNamePrefix;
-
-  List<String>? withDeviceId;
-
-  List<UniversalScanFilter>? exclusionFilters;
+  List<ManufacturerDataFilter> withManufacturerData;
 
   List<Object?> _toList() {
     return <Object?>[
       withServices,
+      withNamePrefix,
       withManufacturerData,
-      withLocalName,
-      withLocalNamePrefix,
-      withDeviceId,
-      exclusionFilters,
     ];
   }
 
@@ -580,12 +592,9 @@ class UniversalScanFilter {
   static UniversalScanFilter decode(Object result) {
     result as List<Object?>;
     return UniversalScanFilter(
-      withServices: (result[0] as List<Object?>?)?.cast<String>(),
-      withManufacturerData: (result[1] as List<Object?>?)?.cast<ManufacturerDataFilter>(),
-      withLocalName: result[2] as String?,
-      withLocalNamePrefix: (result[3] as List<Object?>?)?.cast<String>(),
-      withDeviceId: (result[4] as List<Object?>?)?.cast<String>(),
-      exclusionFilters: (result[5] as List<Object?>?)?.cast<UniversalScanFilter>(),
+      withServices: (result[0]! as List<Object?>).cast<String>(),
+      withNamePrefix: (result[1]! as List<Object?>).cast<String>(),
+      withManufacturerData: (result[2]! as List<Object?>).cast<ManufacturerDataFilter>(),
     );
   }
 
@@ -598,7 +607,7 @@ class UniversalScanFilter {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(withServices, other.withServices) && _deepEquals(withManufacturerData, other.withManufacturerData) && _deepEquals(withLocalName, other.withLocalName) && _deepEquals(withLocalNamePrefix, other.withLocalNamePrefix) && _deepEquals(withDeviceId, other.withDeviceId) && _deepEquals(exclusionFilters, other.exclusionFilters);
+    return _deepEquals(withServices, other.withServices) && _deepEquals(withNamePrefix, other.withNamePrefix) && _deepEquals(withManufacturerData, other.withManufacturerData);
   }
 
   @override
@@ -608,22 +617,22 @@ class UniversalScanFilter {
 
 class ManufacturerDataFilter {
   ManufacturerDataFilter({
-    required this.companyId,
-    this.data,
-    this.mask,
+    required this.companyIdentifier,
+    this.payloadPrefix,
+    this.payloadMask,
   });
 
-  int companyId;
+  int companyIdentifier;
 
-  List<int>? data;
+  Uint8List? payloadPrefix;
 
-  List<int>? mask;
+  Uint8List? payloadMask;
 
   List<Object?> _toList() {
     return <Object?>[
-      companyId,
-      data,
-      mask,
+      companyIdentifier,
+      payloadPrefix,
+      payloadMask,
     ];
   }
 
@@ -633,9 +642,9 @@ class ManufacturerDataFilter {
   static ManufacturerDataFilter decode(Object result) {
     result as List<Object?>;
     return ManufacturerDataFilter(
-      companyId: result[0]! as int,
-      data: (result[1] as List<Object?>?)?.cast<int>(),
-      mask: (result[2] as List<Object?>?)?.cast<int>(),
+      companyIdentifier: result[0]! as int,
+      payloadPrefix: result[1] as Uint8List?,
+      payloadMask: result[2] as Uint8List?,
     );
   }
 
@@ -648,7 +657,52 @@ class ManufacturerDataFilter {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(companyId, other.companyId) && _deepEquals(data, other.data) && _deepEquals(mask, other.mask);
+    return _deepEquals(companyIdentifier, other.companyIdentifier) && _deepEquals(payloadPrefix, other.payloadPrefix) && _deepEquals(payloadMask, other.payloadMask);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+}
+
+class UniversalManufacturerData {
+  UniversalManufacturerData({
+    required this.companyIdentifier,
+    required this.data,
+  });
+
+  int companyIdentifier;
+
+  Uint8List data;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      companyIdentifier,
+      data,
+    ];
+  }
+
+  Object encode() {
+    return _toList();  }
+
+  static UniversalManufacturerData decode(Object result) {
+    result as List<Object?>;
+    return UniversalManufacturerData(
+      companyIdentifier: result[0]! as int,
+      data: result[1]! as Uint8List,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! UniversalManufacturerData || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(companyIdentifier, other.companyIdentifier) && _deepEquals(data, other.data);
   }
 
   @override
@@ -658,13 +712,10 @@ class ManufacturerDataFilter {
 
 class AppleConnectionOptions {
   AppleConnectionOptions({
-    this.shouldRestoreState,
     this.notifyOnConnection,
     this.notifyOnDisconnection,
     this.notifyOnNotification,
   });
-
-  bool? shouldRestoreState;
 
   bool? notifyOnConnection;
 
@@ -674,7 +725,6 @@ class AppleConnectionOptions {
 
   List<Object?> _toList() {
     return <Object?>[
-      shouldRestoreState,
       notifyOnConnection,
       notifyOnDisconnection,
       notifyOnNotification,
@@ -687,10 +737,9 @@ class AppleConnectionOptions {
   static AppleConnectionOptions decode(Object result) {
     result as List<Object?>;
     return AppleConnectionOptions(
-      shouldRestoreState: result[0] as bool?,
-      notifyOnConnection: result[1] as bool?,
-      notifyOnDisconnection: result[2] as bool?,
-      notifyOnNotification: result[3] as bool?,
+      notifyOnConnection: result[0] as bool?,
+      notifyOnDisconnection: result[1] as bool?,
+      notifyOnNotification: result[2] as bool?,
     );
   }
 
@@ -703,7 +752,7 @@ class AppleConnectionOptions {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(shouldRestoreState, other.shouldRestoreState) && _deepEquals(notifyOnConnection, other.notifyOnConnection) && _deepEquals(notifyOnDisconnection, other.notifyOnDisconnection) && _deepEquals(notifyOnNotification, other.notifyOnNotification);
+    return _deepEquals(notifyOnConnection, other.notifyOnConnection) && _deepEquals(notifyOnDisconnection, other.notifyOnDisconnection) && _deepEquals(notifyOnNotification, other.notifyOnNotification);
   }
 
   @override
@@ -744,71 +793,6 @@ class ConnectionPlatformConfig {
       return true;
     }
     return _deepEquals(apple, other.apple);
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
-}
-
-class BleConnectionParametersUpdated {
-  BleConnectionParametersUpdated({
-    required this.mtu,
-    required this.deviceId,
-    this.interval,
-    this.latency,
-    this.supervisionTimeout,
-    this.status,
-  });
-
-  int mtu;
-
-  String deviceId;
-
-  int? interval;
-
-  int? latency;
-
-  int? supervisionTimeout;
-
-  int? status;
-
-  List<Object?> _toList() {
-    return <Object?>[
-      mtu,
-      deviceId,
-      interval,
-      latency,
-      supervisionTimeout,
-      status,
-    ];
-  }
-
-  Object encode() {
-    return _toList();  }
-
-  static BleConnectionParametersUpdated decode(Object result) {
-    result as List<Object?>;
-    return BleConnectionParametersUpdated(
-      mtu: result[0]! as int,
-      deviceId: result[1]! as String,
-      interval: result[2] as int?,
-      latency: result[3] as int?,
-      supervisionTimeout: result[4] as int?,
-      status: result[5] as int?,
-    );
-  }
-
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (other is! BleConnectionParametersUpdated || other.runtimeType != runtimeType) {
-      return false;
-    }
-    if (identical(this, other)) {
-      return true;
-    }
-    return _deepEquals(mtu, other.mtu) && _deepEquals(deviceId, other.deviceId) && _deepEquals(interval, other.interval) && _deepEquals(latency, other.latency) && _deepEquals(supervisionTimeout, other.supervisionTimeout) && _deepEquals(status, other.status);
   }
 
   @override
@@ -860,16 +844,16 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is UniversalBleScanResult) {
       buffer.putUint8(140);
       writeValue(buffer, value.encode());
-    }    else if (value is UniversalManufacturerData) {
+    }    else if (value is UniversalBleService) {
       buffer.putUint8(141);
       writeValue(buffer, value.encode());
-    }    else if (value is UniversalBleService) {
+    }    else if (value is UniversalBleCharacteristic) {
       buffer.putUint8(142);
       writeValue(buffer, value.encode());
-    }    else if (value is UniversalBleCharacteristic) {
+    }    else if (value is UniversalBleDescriptor) {
       buffer.putUint8(143);
       writeValue(buffer, value.encode());
-    }    else if (value is UniversalBleDescriptor) {
+    }    else if (value is BleConnectionParametersUpdated) {
       buffer.putUint8(144);
       writeValue(buffer, value.encode());
     }    else if (value is AndroidOptions) {
@@ -884,13 +868,13 @@ class _PigeonCodec extends StandardMessageCodec {
     }    else if (value is ManufacturerDataFilter) {
       buffer.putUint8(148);
       writeValue(buffer, value.encode());
-    }    else if (value is AppleConnectionOptions) {
+    }    else if (value is UniversalManufacturerData) {
       buffer.putUint8(149);
       writeValue(buffer, value.encode());
-    }    else if (value is ConnectionPlatformConfig) {
+    }    else if (value is AppleConnectionOptions) {
       buffer.putUint8(150);
       writeValue(buffer, value.encode());
-    }    else if (value is BleConnectionParametersUpdated) {
+    }    else if (value is ConnectionPlatformConfig) {
       buffer.putUint8(151);
       writeValue(buffer, value.encode());
     } else {
@@ -937,13 +921,13 @@ class _PigeonCodec extends StandardMessageCodec {
       case 140:
         return UniversalBleScanResult.decode(readValue(buffer)!);
       case 141:
-        return UniversalManufacturerData.decode(readValue(buffer)!);
-      case 142:
         return UniversalBleService.decode(readValue(buffer)!);
-      case 143:
+      case 142:
         return UniversalBleCharacteristic.decode(readValue(buffer)!);
-      case 144:
+      case 143:
         return UniversalBleDescriptor.decode(readValue(buffer)!);
+      case 144:
+        return BleConnectionParametersUpdated.decode(readValue(buffer)!);
       case 145:
         return AndroidOptions.decode(readValue(buffer)!);
       case 146:
@@ -953,11 +937,11 @@ class _PigeonCodec extends StandardMessageCodec {
       case 148:
         return ManufacturerDataFilter.decode(readValue(buffer)!);
       case 149:
-        return AppleConnectionOptions.decode(readValue(buffer)!);
+        return UniversalManufacturerData.decode(readValue(buffer)!);
       case 150:
-        return ConnectionPlatformConfig.decode(readValue(buffer)!);
+        return AppleConnectionOptions.decode(readValue(buffer)!);
       case 151:
-        return BleConnectionParametersUpdated.decode(readValue(buffer)!);
+        return ConnectionPlatformConfig.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -996,14 +980,14 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as AvailabilityState;
   }
 
-  Future<bool> hasPermissions() async {
+  Future<bool> hasPermissions(bool withAndroidFineLocation) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.hasPermissions$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[withAndroidFineLocation]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1015,26 +999,25 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<bool> requestPermissions() async {
+  Future<void> requestPermissions(bool withAndroidFineLocation) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.requestPermissions$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[withAndroidFineLocation]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
-    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+    _extractReplyValueOrThrow(
         pigeonVar_replyList,
         pigeonVar_channelName,
-        isNullValid: false,
+        isNullValid: true,
     )
     ;
-    return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> enableBluetooth() async {
+  Future<bool> enableBluetooth() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.enableBluetooth$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
@@ -1044,15 +1027,16 @@ class UniversalBlePlatformChannel {
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
-    _extractReplyValueOrThrow(
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
         pigeonVar_replyList,
         pigeonVar_channelName,
-        isNullValid: true,
+        isNullValid: false,
     )
     ;
+    return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> disableBluetooth() async {
+  Future<bool> disableBluetooth() async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.disableBluetooth$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
@@ -1062,22 +1046,23 @@ class UniversalBlePlatformChannel {
     final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
-    _extractReplyValueOrThrow(
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
         pigeonVar_replyList,
         pigeonVar_channelName,
-        isNullValid: true,
+        isNullValid: false,
     )
     ;
+    return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> startScan(List<UniversalScanFilter> filters, AndroidOptions androidOptions) async {
+  Future<void> startScan(UniversalScanFilter? filter, UniversalScanConfig? config) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.startScan$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[filters, androidOptions]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[filter, config]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1125,14 +1110,14 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> connect(String peripheralId, ConnectionPlatformConfig config) async {
+  Future<void> connect(String deviceId, {bool? autoConnect, ConnectionPlatformConfig? platformConfig, }) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.connect$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId, config]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, autoConnect, platformConfig]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1143,14 +1128,14 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<void> disconnect(String peripheralId) async {
+  Future<void> disconnect(String deviceId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.disconnect$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1161,14 +1146,14 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<void> setNotifiable(String peripheralId, String serviceId, String characteristicId, BleInputProperty value) async {
+  Future<void> setNotifiable(String deviceId, String service, String characteristic, BleInputProperty bleInputProperty) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.setNotifiable$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId, serviceId, characteristicId, value]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, service, characteristic, bleInputProperty]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1179,14 +1164,14 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<List<UniversalBleService>> discoverServices(String peripheralId) async {
+  Future<List<UniversalBleService>> discoverServices(String deviceId, bool withDescriptors) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.discoverServices$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, withDescriptors]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1198,14 +1183,14 @@ class UniversalBlePlatformChannel {
     return (pigeonVar_replyValue! as List<Object?>).cast<UniversalBleService>();
   }
 
-  Future<UniversalBleCharacteristic> readValue(String peripheralId, String serviceId, String characteristicId) async {
+  Future<Uint8List> readValue(String deviceId, String service, String characteristic) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.readValue$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId, serviceId, characteristicId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, service, characteristic]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1214,17 +1199,17 @@ class UniversalBlePlatformChannel {
         isNullValid: false,
     )
     ;
-    return pigeonVar_replyValue! as UniversalBleCharacteristic;
+    return pigeonVar_replyValue! as Uint8List;
   }
 
-  Future<int> requestMtu(String peripheralId, int mtu) async {
+  Future<int> requestMtu(String deviceId, int expectedMtu) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.requestMtu$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId, mtu]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, expectedMtu]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1236,14 +1221,14 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as int;
   }
 
-  Future<void> writeValue(String peripheralId, String serviceId, String characteristicId, List<int> value, BleOutputProperty bleOutputProperty) async {
+  Future<void> writeValue(String deviceId, String service, String characteristic, Uint8List value, BleOutputProperty bleOutputProperty) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.writeValue$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId, serviceId, characteristicId, value, bleOutputProperty]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, service, characteristic, value, bleOutputProperty]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1254,14 +1239,14 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<bool> isPaired(String peripheralId) async {
+  Future<bool> isPaired(String deviceId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.isPaired$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1273,32 +1258,33 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> pair(String peripheralId) async {
+  Future<bool> pair(String deviceId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.pair$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
-    _extractReplyValueOrThrow(
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
         pigeonVar_replyList,
         pigeonVar_channelName,
-        isNullValid: true,
+        isNullValid: false,
     )
     ;
+    return pigeonVar_replyValue! as bool;
   }
 
-  Future<void> unPair(String peripheralId) async {
+  Future<void> unPair(String deviceId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.unPair$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1309,7 +1295,7 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<List<UniversalBleScanResult>> getSystemDevices({List<String>? withServices}) async {
+  Future<List<UniversalBleScanResult>> getSystemDevices(List<String> withServices) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.getSystemDevices$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
@@ -1328,14 +1314,14 @@ class UniversalBlePlatformChannel {
     return (pigeonVar_replyValue! as List<Object?>).cast<UniversalBleScanResult>();
   }
 
-  Future<BleConnectionState> getConnectionState(String peripheralId) async {
+  Future<BleConnectionState> getConnectionState(String deviceId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.getConnectionState$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1347,14 +1333,14 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as BleConnectionState;
   }
 
-  Future<int> readRssi(String peripheralId) async {
+  Future<int> readRssi(String deviceId) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.readRssi$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
@@ -1366,14 +1352,14 @@ class UniversalBlePlatformChannel {
     return pigeonVar_replyValue! as int;
   }
 
-  Future<void> requestConnectionPriority(String peripheralId, BleConnectionPriority priority) async {
+  Future<void> requestConnectionPriority(String deviceId, BleConnectionPriority priority) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.requestConnectionPriority$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[peripheralId, priority]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[deviceId, priority]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1384,14 +1370,14 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<void> setLogLevel(BleLogLevel level) async {
+  Future<void> setLogLevel(BleLogLevel logLevel) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.setLogLevel$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[level]);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[logLevel]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     _extractReplyValueOrThrow(
@@ -1408,15 +1394,15 @@ abstract class UniversalBleCallbackChannel {
 
   void onAvailabilityChanged(AvailabilityState state);
 
-  void onPairStateChange(String peripheralId, bool isPaired);
+  void onPairStateChange(String deviceId, bool isPaired, String? error);
 
   void onScanResult(UniversalBleScanResult result);
 
-  void onValueChanged(String peripheralId, String serviceId, String characteristicId, List<int> value);
+  void onValueChanged(String deviceId, String characteristicId, Uint8List value, int? timestamp);
 
-  void onConnectionChanged(String peripheralId, BleConnectionState state);
+  void onConnectionChanged(String deviceId, bool connected, String? error);
 
-  void onConnectionParametersUpdated(BleConnectionParametersUpdated result);
+  void onConnectionParametersUpdated(BleConnectionParametersUpdated update);
 
   static void setUp(UniversalBleCallbackChannel? api, {BinaryMessenger? binaryMessenger, String messageChannelSuffix = '',}) {
     messageChannelSuffix = messageChannelSuffix.isNotEmpty ? '.$messageChannelSuffix' : '';
@@ -1450,10 +1436,11 @@ abstract class UniversalBleCallbackChannel {
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final String arg_peripheralId = args[0]! as String;
+          final String arg_deviceId = args[0]! as String;
           final bool arg_isPaired = args[1]! as bool;
+          final String? arg_error = args[2] as String?;
           try {
-            api.onPairStateChange(arg_peripheralId, arg_isPaired);
+            api.onPairStateChange(arg_deviceId, arg_isPaired, arg_error);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
@@ -1493,12 +1480,12 @@ abstract class UniversalBleCallbackChannel {
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final String arg_peripheralId = args[0]! as String;
-          final String arg_serviceId = args[1]! as String;
-          final String arg_characteristicId = args[2]! as String;
-          final List<int> arg_value = (args[3]! as List<Object?>).cast<int>();
+          final String arg_deviceId = args[0]! as String;
+          final String arg_characteristicId = args[1]! as String;
+          final Uint8List arg_value = args[2]! as Uint8List;
+          final int? arg_timestamp = args[3] as int?;
           try {
-            api.onValueChanged(arg_peripheralId, arg_serviceId, arg_characteristicId, arg_value);
+            api.onValueChanged(arg_deviceId, arg_characteristicId, arg_value, arg_timestamp);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
@@ -1517,10 +1504,11 @@ abstract class UniversalBleCallbackChannel {
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final String arg_peripheralId = args[0]! as String;
-          final BleConnectionState arg_state = args[1]! as BleConnectionState;
+          final String arg_deviceId = args[0]! as String;
+          final bool arg_connected = args[1]! as bool;
+          final String? arg_error = args[2] as String?;
           try {
-            api.onConnectionChanged(arg_peripheralId, arg_state);
+            api.onConnectionChanged(arg_deviceId, arg_connected, arg_error);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);
@@ -1539,9 +1527,9 @@ abstract class UniversalBleCallbackChannel {
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final BleConnectionParametersUpdated arg_result = args[0]! as BleConnectionParametersUpdated;
+          final BleConnectionParametersUpdated arg_update = args[0]! as BleConnectionParametersUpdated;
           try {
-            api.onConnectionParametersUpdated(arg_result);
+            api.onConnectionParametersUpdated(arg_update);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

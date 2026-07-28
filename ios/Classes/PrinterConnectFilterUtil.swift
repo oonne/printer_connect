@@ -3,7 +3,7 @@ import CoreBluetooth
 
 extension UniversalScanFilter {
     var usesCustomFilters: Bool {
-        return withServices != nil || withManufacturerData != nil || withLocalName != nil || withLocalNamePrefix != nil
+        return !withServices.isEmpty || !withManufacturerData.isEmpty || !withNamePrefix.isEmpty
     }
 }
 
@@ -13,18 +13,18 @@ struct PrinterConnectFilterUtil {
         _ peripheral: CBPeripheral,
         advertisementData: [String: Any],
         rssi: NSNumber,
-        filters: [UniversalScanFilter]?
+        filter: UniversalScanFilter?
     ) -> UniversalBleScanResult? {
         let peripheralId = peripheral.identifier.uuidString
         let name = advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? peripheral.name
 
         var manufacturerDataList: [UniversalManufacturerData]? = nil
         if let manufacturerData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-            let manufacturerId = Int64(manufacturerData.prefix(2).withUnsafeBytes {
+            let companyId = Int64(manufacturerData.prefix(2).withUnsafeBytes {
                 $0.load(as: UInt16.self)
             })
-            let data = manufacturerData.dropFirst(2).map { Int64($0) }
-            manufacturerDataList = [UniversalManufacturerData(id: manufacturerId, data: data)]
+            let data = FlutterStandardTypedData(bytes: manufacturerData.dropFirst(2))
+            manufacturerDataList = [UniversalManufacturerData(companyIdentifier: companyId, data: data)]
         }
 
         var serviceUuids: [String]? = nil
@@ -32,38 +32,32 @@ struct PrinterConnectFilterUtil {
             serviceUuids = services.map { $0.uuidString }
         }
 
-        var txPowerLevel: Int64? = nil
-        if let txPower = advertisementData[CBAdvertisementDataTxPowerLevelKey] as? NSNumber {
-            txPowerLevel = txPower.int64Value
-        }
-
         let result = UniversalBleScanResult(
-            peripheralId: peripheralId,
+            deviceId: peripheralId,
             name: name,
+            isPaired: nil,
             rssi: rssi.int64Value,
-            manufacturerData: manufacturerDataList,
+            manufacturerDataList: manufacturerDataList,
             serviceData: nil,
-            serviceUuids: serviceUuids,
-            txPowerLevel: txPowerLevel
+            services: serviceUuids,
+            timestamp: nil
         )
 
-        guard let filters = filters, !filters.isEmpty else {
+        guard let filter = filter else {
             return result
         }
 
-        for filter in filters {
-            if isNameMatchingFilters(filter: filter, name: name) &&
-                isServicesMatchingFilters(filter: filter, serviceUuids: serviceUuids) &&
-                isManufacturerDataMatchingFilters(filter: filter, manufacturerData: manufacturerDataList) {
-                return result
-            }
+        if isNameMatchingFilters(filter: filter, name: name) &&
+            isServicesMatchingFilters(filter: filter, serviceUuids: serviceUuids) &&
+            isManufacturerDataMatchingFilters(filter: filter, manufacturerData: manufacturerDataList) {
+            return result
         }
 
         return nil
     }
 
     static func isNameMatchingFilters(filter: UniversalScanFilter, name: String?) -> Bool {
-        guard filter.withLocalName != nil || filter.withLocalNamePrefix != nil else {
+        guard !filter.withNamePrefix.isEmpty else {
             return true
         }
 
@@ -71,13 +65,7 @@ struct PrinterConnectFilterUtil {
             return false
         }
 
-        if let localName = filter.withLocalName {
-            if name != localName {
-                return false
-            }
-        }
-
-        if let prefix = filter.withLocalNamePrefix {
+        for prefix in filter.withNamePrefix {
             if !name.hasPrefix(prefix) {
                 return false
             }
@@ -87,7 +75,7 @@ struct PrinterConnectFilterUtil {
     }
 
     static func isServicesMatchingFilters(filter: UniversalScanFilter, serviceUuids: [String]?) -> Bool {
-        guard let filterServices = filter.withServices, !filterServices.isEmpty else {
+        guard !filter.withServices.isEmpty else {
             return true
         }
 
@@ -95,7 +83,7 @@ struct PrinterConnectFilterUtil {
             return false
         }
 
-        for filterService in filterServices {
+        for filterService in filter.withServices {
             if !serviceUuids.contains(filterService) {
                 return false
             }
@@ -105,7 +93,7 @@ struct PrinterConnectFilterUtil {
     }
 
     static func isManufacturerDataMatchingFilters(filter: UniversalScanFilter, manufacturerData: [UniversalManufacturerData]?) -> Bool {
-        guard let filterManufacturerData = filter.withManufacturerData, !filterManufacturerData.isEmpty else {
+        guard !filter.withManufacturerData.isEmpty else {
             return true
         }
 
@@ -113,31 +101,37 @@ struct PrinterConnectFilterUtil {
             return false
         }
 
-        for filterEntry in filterManufacturerData {
-            guard let matchingEntry = manufacturerData.first(where: { $0.id == filterEntry.companyId }) else {
+        for filterEntry in filter.withManufacturerData {
+            guard let matchingEntry = manufacturerData.first(where: { $0.companyIdentifier == filterEntry.companyIdentifier }) else {
                 return false
             }
 
-            guard let filterData = filterEntry.data, !filterData.isEmpty else {
+            let matchingData = matchingEntry.data.data
+
+            guard let prefix = filterEntry.payloadPrefix, !prefix.isEmpty else {
                 continue
             }
 
-            guard let filterMask = filterEntry.mask, !filterMask.isEmpty else {
-                if matchingEntry.data != filterData {
+            let prefixData = prefix.data
+
+            guard let mask = filterEntry.payloadMask, !mask.isEmpty else {
+                if matchingData.prefix(prefixData.count) != prefixData {
                     return false
                 }
                 continue
             }
 
-            for i in 0..<filterData.count {
-                if i >= matchingEntry.data.count {
+            let maskData = mask.data
+
+            for i in 0..<prefixData.count {
+                if i >= matchingData.count {
                     return false
                 }
-                let maskByte = filterMask[i]
+                let maskByte = maskData[i]
                 if maskByte == 0 {
                     continue
                 }
-                if matchingEntry.data[i] != filterData[i] {
+                if matchingData[i] != prefixData[i] {
                     return false
                 }
             }

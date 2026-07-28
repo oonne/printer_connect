@@ -1,36 +1,50 @@
 import 'package:flutter/foundation.dart';
 import 'package:printer_connect/printer_connect.dart';
 
-import 'manufacturer_data.dart';
-
 class BleDevice {
   final String deviceId;
-  final String name;
-  final String rawName;
+  final String? name;
+  final String? rawName;
   final int? rssi;
-  final bool paired;
+  final bool? paired;
   final List<String> services;
-  final bool isSystemDevice;
+  final bool? isSystemDevice;
   final List<ManufacturerData> manufacturerDataList;
   final Map<String, Uint8List> serviceData;
-  final int timestamp;
+  final int? timestamp;
 
-  const BleDevice({
+  BleDevice({
     required this.deviceId,
-    required this.name,
+    this.name,
     this.rssi,
-    this.paired = false,
+    this.paired,
     this.services = const [],
-    this.isSystemDevice = false,
+    this.isSystemDevice,
     this.manufacturerDataList = const [],
     this.serviceData = const {},
-    this.timestamp = 0,
-  }) : rawName = name;
+    this.timestamp,
+  }) : rawName = _cleanName(name);
+
+  static String? _cleanName(String? name) {
+    if (name == null) return null;
+    return name.replaceAll(RegExp(r'[^ -~]'), '').trim();
+  }
+
+  static Map<String, Uint8List> _validateServiceData(
+      Map<String, Uint8List> data) {
+    return data.map((key, value) {
+      try {
+        return MapEntry(BleUuidParser.string(key), value);
+      } catch (_) {
+        return MapEntry(key, value);
+      }
+    });
+  }
 
   @Deprecated('Use manufacturerDataList instead')
-  ManufacturerData? get manufacturerData {
+  Uint8List? get manufacturerData {
     if (manufacturerDataList.isEmpty) return null;
-    return manufacturerDataList.first;
+    return manufacturerDataList.first.toUint8List();
   }
 
   Future<BleConnectionState> get connectionState async {
@@ -41,53 +55,15 @@ class BleDevice {
     return PrinterConnect.readRssi(deviceId);
   }
 
-  bool get receivesAdvertisements => timestamp > 0;
+  bool get receivesAdvertisements =>
+      PrinterConnect.receivesAdvertisements(deviceId);
 
-  DateTime get timestampDateTime {
-    if (timestamp == 0) {
-      return DateTime.now();
+  DateTime? get timestampDateTime {
+    final ts = timestamp;
+    if (ts == null || ts == 0) {
+      return null;
     }
-    return DateTime.fromMillisecondsSinceEpoch(timestamp);
-  }
-
-  factory BleDevice.fromJson(Map<String, dynamic> json) {
-    return BleDevice(
-      deviceId: json['deviceId'] as String,
-      name: json['name'] as String? ?? '',
-      rssi: json['rssi'] as int?,
-      paired: json['paired'] as bool? ?? false,
-      services: (json['services'] as List<dynamic>?)?.cast<String>() ?? const [],
-      isSystemDevice: json['isSystemDevice'] as bool? ?? false,
-      manufacturerDataList: (json['manufacturerDataList'] as List<dynamic>?)
-              ?.map((e) => ManufacturerData.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          const [],
-      serviceData: (json['serviceData'] as Map<dynamic, dynamic>?)?.map(
-            (key, value) => MapEntry(
-              key as String,
-              Uint8List.fromList((value as List<dynamic>).cast<int>()),
-            ),
-          ) ??
-          const {},
-      timestamp: json['timestamp'] as int? ?? 0,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'deviceId': deviceId,
-      'name': name,
-      'rawName': rawName,
-      'rssi': rssi,
-      'paired': paired,
-      'services': services,
-      'isSystemDevice': isSystemDevice,
-      'manufacturerDataList': manufacturerDataList.map((e) => e.toJson()).toList(),
-      'serviceData': serviceData.map(
-        (key, value) => MapEntry(key, value),
-      ),
-      'timestamp': timestamp,
-    };
+    return DateTime.fromMillisecondsSinceEpoch(ts);
   }
 
   @override

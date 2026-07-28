@@ -7,24 +7,20 @@ import Flutter
 import FlutterMacOS
 #endif
 
-// MARK: - CBCharacteristicProperties to CharacteristicProperty
-
 extension CBCharacteristicProperties {
     var toCharacteristicProperty: [CharacteristicProperty] {
         var properties: [CharacteristicProperty] = []
+        if contains(.broadcast) { properties.append(.broadcast) }
         if contains(.read) { properties.append(.read) }
-        if contains(.write) { properties.append(.write) }
         if contains(.writeWithoutResponse) { properties.append(.writeWithoutResponse) }
+        if contains(.write) { properties.append(.write) }
         if contains(.notify) { properties.append(.notify) }
         if contains(.indicate) { properties.append(.indicate) }
-        if contains(.broadcast) { properties.append(.broadcast) }
-        if contains(.extendedProperties) { properties.append(.extendedSbleProps) }
-        if contains(.signedWrite) { properties.append(.signedWrite) }
+        if contains(.authenticatedSignedWrites) { properties.append(.authenticatedSignedWrites) }
+        if contains(.extendedProperties) { properties.append(.extendedProperties) }
         return properties
     }
 }
-
-// MARK: - CBManagerState to AvailabilityState
 
 extension CBManagerState {
     var toAvailabilityState: AvailabilityState {
@@ -39,8 +35,6 @@ extension CBManagerState {
         }
     }
 }
-
-// MARK: - Error mapping
 
 func mapErrorCodeToEnum(_ error: Error) -> String {
     let nsError = error as NSError
@@ -70,7 +64,7 @@ func createFlutterError(code: String, message: String?, details: Any? = nil) -> 
 }
 
 extension Error {
-    func toFlutterError() -> PigeonError {
+    func toPigeonError() -> PigeonError {
         let nsError = self as NSError
         return PigeonError(
             code: mapErrorCodeToEnum(self),
@@ -80,15 +74,11 @@ extension Error {
     }
 }
 
-// MARK: - CBUUID extensions
-
 extension CBUUID {
     var uuidStr: String {
         return uuidString
     }
 }
-
-// MARK: - CBPeripheral extensions
 
 extension CBPeripheral {
     var uuid: String {
@@ -105,8 +95,6 @@ extension CBPeripheral {
         return nil
     }
 }
-
-// MARK: - Data extensions
 
 #if os(iOS)
 extension FlutterStandardTypedData {
@@ -126,11 +114,9 @@ extension Data {
     }
 }
 
-// MARK: - Future classes
-
 class CharacteristicReadFuture {
-    let completion: (Result<UniversalBleCharacteristic, PigeonError>) -> Void
-    init(completion: @escaping (Result<UniversalBleCharacteristic, PigeonError>) -> Void) {
+    let completion: (Result<FlutterStandardTypedData, PigeonError>) -> Void
+    init(completion: @escaping (Result<FlutterStandardTypedData, PigeonError>) -> Void) {
         self.completion = completion
     }
 }
@@ -164,8 +150,8 @@ class RssiReadFuture {
 }
 
 class ConnectionStateFuture {
-    let completion: (Result<BleConnectionState, PigeonError>) -> Void
-    init(completion: @escaping (Result<BleConnectionState, PigeonError>) -> Void) {
+    let completion: (Result<Void, PigeonError>) -> Void
+    init(completion: @escaping (Result<Void, PigeonError>) -> Void) {
         self.completion = completion
     }
 }
@@ -183,8 +169,6 @@ class MtuFuture {
         self.completion = completion
     }
 }
-
-// MARK: - String extensions for getting peripherals
 
 extension String {
     func toCBUUID() -> CBUUID {

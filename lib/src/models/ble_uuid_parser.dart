@@ -8,7 +8,11 @@ class BleUuidParser {
       throw ArgumentError('UUID cannot be empty');
     }
 
-    final trimmed = uuid.trim().toUpperCase();
+    var trimmed = uuid.trim().toUpperCase();
+
+    if (trimmed.startsWith('0X')) {
+      trimmed = trimmed.substring(2);
+    }
 
     if (trimmed.length == 36 && trimmed.contains('-')) {
       if (_isValid128BitUuid(trimmed)) {
@@ -48,7 +52,11 @@ class BleUuidParser {
 
   static String number(int short) {
     if (short < 0 || short > 0xFFFF) {
-      throw ArgumentError('16-bit UUID number must be between 0 and 0xFFFF, got: $short');
+      throw ArgumentError('UUID number must be between 0 and 0xFFFF, got: $short');
+    }
+    if (short <= 0xFF) {
+      final hex = short.toRadixString(16).padLeft(2, '0').toUpperCase();
+      return '000000$hex$_baseSuffix';
     }
     final hex = short.toRadixString(16).padLeft(4, '0').toUpperCase();
     return '0000$hex$_baseSuffix';

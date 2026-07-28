@@ -15,18 +15,23 @@ class PrinterConnect {
   static final PrinterConnectPlatform _platform =
       PrinterConnectPlatform.instance;
 
-  static final Map<String, BleCommandQueue> _queues = {};
+  static final BleCommandQueue _bleCommandQueue = BleCommandQueue();
+
+  static final Map<String, Completer<bool>> _connectionEventCompleter = {};
+  static final Map<String, StreamSubscription<bool>> _connectionEventSubscription =
+      {};
+
   static final Set<String> _connectedDevices = {};
   static final Set<String> _connectingDevices = {};
-  static final Map<String, StreamSubscription<BleConnectionState>>
-      _connectionSubscriptions = {};
+
+  static Duration? _timeout;
 
   static Stream<BleDevice> get scanStream => _platform.scanStream;
 
   static Stream<AvailabilityState> get availabilityStream =>
       _platform.availabilityStream;
 
-  static Stream<BleConnectionState> connectionStream(String deviceId) =>
+  static Stream<bool> connectionStream(String deviceId) =>
       _platform.connectionStream(deviceId);
 
   static Stream<Uint8List> characteristicValueStream(
@@ -35,6 +40,14 @@ class PrinterConnect {
 
   static Stream<bool> pairingStateStream(String deviceId) =>
       _platform.pairingStateStream(deviceId);
+
+  static void setTimeout(Duration timeout) {
+    _timeout = timeout;
+  }
+
+  static void setQueueType(QueueType type) {
+    _bleCommandQueue.queueType = type;
+  }
 
   static Future<bool> hasPermissions(
       {bool withAndroidFineLocation = false}) async {
@@ -81,14 +94,46 @@ class PrinterConnect {
       return;
     }
     _connectingDevices.add(deviceId);
+
+    final completer = Completer<bool>();
+    _connectionEventCompleter[deviceId] = completer;
+
+    _connectionEventSubscription[deviceId]
+        ?.cancel();
+    _connectionEventSubscription[deviceId] =
+        connectionStream(deviceId).listen((connected) {
+      if (connected) {
+        if (_connectionEventCompleter.containsKey(deviceId)) {
+          _connectionEventCompleter[deviceId]!.complete(true);
+          _connectionEventCompleter.remove(deviceId);
+        }
+        _connectedDevices.add(deviceId);
+        _connectionEventSubscription[deviceId]?.cancel();
+        _connectionEventSubscription.remove(deviceId);
+      }
+    });
+
     try {
       await _platform.connect(deviceId,
-          connectionTimeout: timeout,
-          autoConnect: autoConnect,
-          platformConfig: platformConfig);
-      _connectedDevices.add(deviceId);
-      _setupConnectionTracking(deviceId);
+          autoConnect: autoConnect, platformConfig: platformConfig);
+      final connectionTimeout = timeout ?? _timeout;
+      if (connectionTimeout != null) {
+        await completer.future.timeout(connectionTimeout);
+      } else {
+        await completer.future;
+      }
+    } on TimeoutException catch (_) {
+      _connectionEventCompleter.remove(deviceId);
+      _connectionEventSubscription[deviceId]?.cancel();
+      _connectionEventSubscription.remove(deviceId);
+      throw exceptions.ConnectionException(
+        'Connection timeout for $deviceId',
+        code: 'connection_timeout',
+      );
     } on PlatformException catch (e) {
+      _connectionEventCompleter.remove(deviceId);
+      _connectionEventSubscription[deviceId]?.cancel();
+      _connectionEventSubscription.remove(deviceId);
       throw exceptions.errorParser(e);
     } finally {
       _connectingDevices.remove(deviceId);
@@ -96,27 +141,22 @@ class PrinterConnect {
   }
 
   static Future<void> disconnect(String deviceId) async {
+    if (!_connectedDevices.contains(deviceId)) {
+      final state = getConnectionState(deviceId);
+      if (state != BleConnectionState.connected) {
+        return;
+      }
+    }
     try {
       await _platform.disconnect(deviceId);
+      _platform.updateConnection(deviceId, false);
     } on PlatformException catch (e) {
       throw exceptions.errorParser(e);
     } finally {
       _connectedDevices.remove(deviceId);
-      await _connectionSubscriptions[deviceId]?.cancel();
-      _connectionSubscriptions.remove(deviceId);
+      _connectionEventSubscription[deviceId]?.cancel();
+      _connectionEventSubscription.remove(deviceId);
     }
-  }
-
-  static void _setupConnectionTracking(String deviceId) {
-    _connectionSubscriptions[deviceId]?.cancel();
-    _connectionSubscriptions[deviceId] =
-        connectionStream(deviceId).listen((state) {
-      if (state == BleConnectionState.disconnected) {
-        _connectedDevices.remove(deviceId);
-        _connectionSubscriptions[deviceId]?.cancel();
-        _connectionSubscriptions.remove(deviceId);
-      }
-    });
   }
 
   static List<String> get connectedDevices => List.unmodifiable(_connectedDevices);
@@ -126,8 +166,8 @@ class PrinterConnect {
   static bool isDeviceConnecting(String deviceId) => _connectingDevices.contains(deviceId);
 
   static Future<List<BleService>> discoverServices(String deviceId,
-      {bool withDescriptors = false, Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {bool withDescriptors = false, Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.discoverServices(deviceId, withDescriptors),
           deviceId: deviceId,
           timeout: timeout,
@@ -136,10 +176,9 @@ class PrinterConnect {
 
   static Future<Uint8List> read(
       String deviceId, String service, String characteristic,
-      {Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
-          () => _platform.readValue(deviceId, service, characteristic,
-              timeout: timeout),
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
+          () => _platform.readValue(deviceId, service, characteristic),
           deviceId: deviceId,
           timeout: timeout,
         );
@@ -147,10 +186,10 @@ class PrinterConnect {
 
   static Future<void> write(
       String deviceId, String service, String characteristic, Uint8List value,
-      {bool withoutResponse = false, Duration? timeout, String? queueId}) async {
+      {bool withoutResponse = false, Duration? timeout}) async {
     final property =
-        withoutResponse ? BleOutputProperty.writeWithoutResponse : BleOutputProperty.write;
-    return _getQueue(queueId, deviceId).queueCommand(
+        withoutResponse ? BleOutputProperty.withoutResponse : BleOutputProperty.withResponse;
+    return _bleCommandQueue.queueCommand(
           () => _platform.writeValue(
               deviceId, service, characteristic, value, property),
           deviceId: deviceId,
@@ -160,8 +199,8 @@ class PrinterConnect {
 
   static Future<void> subscribeNotifications(
       String deviceId, String service, String characteristic,
-      {Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.setNotifiable(
               deviceId, service, characteristic, BleInputProperty.notification),
           deviceId: deviceId,
@@ -171,8 +210,8 @@ class PrinterConnect {
 
   static Future<void> subscribeIndications(
       String deviceId, String service, String characteristic,
-      {Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.setNotifiable(
               deviceId, service, characteristic, BleInputProperty.indication),
           deviceId: deviceId,
@@ -182,8 +221,8 @@ class PrinterConnect {
 
   static Future<void> unsubscribe(
       String deviceId, String service, String characteristic,
-      {Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.setNotifiable(
               deviceId, service, characteristic, BleInputProperty.disabled),
           deviceId: deviceId,
@@ -192,8 +231,8 @@ class PrinterConnect {
   }
 
   static Future<int> requestMtu(String deviceId, int expectedMtu,
-      {Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.requestMtu(deviceId, expectedMtu),
           deviceId: deviceId,
           timeout: timeout,
@@ -201,8 +240,8 @@ class PrinterConnect {
   }
 
   static Future<int> readRssi(String deviceId,
-      {Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.readRssi(deviceId),
           deviceId: deviceId,
           timeout: timeout,
@@ -210,8 +249,8 @@ class PrinterConnect {
   }
 
   static Future<bool> pair(String deviceId,
-      {BleCommand? pairingCommand, Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.pair(deviceId),
           deviceId: deviceId,
           timeout: timeout,
@@ -219,8 +258,8 @@ class PrinterConnect {
   }
 
   static Future<bool> isPaired(String deviceId,
-      {BleCommand? pairingCommand, Duration? timeout, String? queueId}) async {
-    return _getQueue(queueId, deviceId).queueCommand(
+      {Duration? timeout}) async {
+    return _bleCommandQueue.queueCommand(
           () => _platform.isPaired(deviceId),
           deviceId: deviceId,
           timeout: timeout,
@@ -231,18 +270,16 @@ class PrinterConnect {
     return _platform.unpair(deviceId);
   }
 
-  static Future<BleConnectionState> getConnectionState(
-      String deviceId) async {
+  static BleConnectionState getConnectionState(String deviceId) {
     return _platform.getConnectionState(deviceId);
   }
 
   static Future<List<BleDevice>> getSystemDevices(
-      {List<String>? withServices}) async {
+      {List<String> withServices = const []}) async {
     return _platform.getSystemDevices(withServices);
   }
 
-  static Future<AvailabilityState> getBluetoothAvailabilityState(
-      {String? queueId}) async {
+  static Future<AvailabilityState> getBluetoothAvailabilityState() async {
     return _platform.getBluetoothAvailabilityState();
   }
 
@@ -265,17 +302,5 @@ class PrinterConnect {
 
   static bool receivesAdvertisements(String deviceId) {
     return _platform.receivesAdvertisements(deviceId);
-  }
-
-  static void setQueueType(String? queueId, QueueType type) {
-    if (queueId == null) return;
-    _queues[queueId] = BleCommandQueue(queueType: type);
-  }
-
-  static BleCommandQueue _getQueue(String? queueId, String deviceId) {
-    if (queueId != null && _queues.containsKey(queueId)) {
-      return _queues[queueId]!;
-    }
-    return BleCommandQueue(queueType: QueueType.none);
   }
 }

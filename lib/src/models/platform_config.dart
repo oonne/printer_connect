@@ -1,3 +1,9 @@
+import 'dart:typed_data';
+
+import 'package:printer_connect/src/printer_connect.g.dart' show AndroidScanCallbackType;
+
+import 'manufacturer_data.dart';
+
 class PlatformConfig {
   final WebOptions? web;
   final AndroidOptions? android;
@@ -30,33 +36,45 @@ class PlatformConfig {
 }
 
 class WebOptions {
-  final bool useBle;
+  final List<String>? optionalServices;
+  final List<ManufacturerData>? optionalManufacturerData;
 
   const WebOptions({
-    this.useBle = true,
+    this.optionalServices,
+    this.optionalManufacturerData,
   });
 
   factory WebOptions.fromJson(Map<String, dynamic> json) {
     return WebOptions(
-      useBle: json['useBle'] as bool? ?? true,
+      optionalServices: (json['optionalServices'] as List<dynamic>?)
+          ?.cast<String>(),
+      optionalManufacturerData: (json['optionalManufacturerData'] as List<dynamic>?)
+          ?.map((e) => ManufacturerData.fromData(
+                e['companyId'] as int,
+                e['data'] as Uint8List,
+              ))
+          .toList(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'useBle': useBle,
+      'optionalServices': optionalServices,
+      'optionalManufacturerData':
+          optionalManufacturerData?.map((e) => e.toUniversalManufacturerData()).toList(),
     };
   }
 
   @override
-  String toString() => 'WebOptions(useBle: $useBle)';
+  String toString() =>
+      'WebOptions(optionalServices: ${optionalServices?.length ?? 0}, optionalManufacturerData: ${optionalManufacturerData?.length ?? 0})';
 }
 
 class AndroidOptions {
   final bool requestLocationPermission;
   final int scanMode;
   final int reportDelayMillis;
-  final int callbackType;
+  final List<AndroidScanCallbackType>? callbackType;
   final int matchMode;
   final int numOfMatches;
   final bool legacy;
@@ -65,7 +83,7 @@ class AndroidOptions {
     this.requestLocationPermission = true,
     this.scanMode = 0,
     this.reportDelayMillis = 0,
-    this.callbackType = 0,
+    this.callbackType,
     this.matchMode = 0,
     this.numOfMatches = 0,
     this.legacy = false,
@@ -77,7 +95,9 @@ class AndroidOptions {
           json['requestLocationPermission'] as bool? ?? true,
       scanMode: json['scanMode'] as int? ?? 0,
       reportDelayMillis: json['reportDelayMillis'] as int? ?? 0,
-      callbackType: json['callbackType'] as int? ?? 0,
+      callbackType: (json['callbackType'] as List<dynamic>?)
+          ?.map((e) => AndroidScanCallbackType.values[e as int])
+          .toList(),
       matchMode: json['matchMode'] as int? ?? 0,
       numOfMatches: json['numOfMatches'] as int? ?? 0,
       legacy: json['legacy'] as bool? ?? false,
@@ -89,7 +109,7 @@ class AndroidOptions {
       'requestLocationPermission': requestLocationPermission,
       'scanMode': scanMode,
       'reportDelayMillis': reportDelayMillis,
-      'callbackType': callbackType,
+      'callbackType': callbackType?.map((e) => e.index).toList(),
       'matchMode': matchMode,
       'numOfMatches': numOfMatches,
       'legacy': legacy,
@@ -100,7 +120,7 @@ class AndroidOptions {
     bool? requestLocationPermission,
     int? scanMode,
     int? reportDelayMillis,
-    int? callbackType,
+    List<AndroidScanCallbackType>? callbackType,
     int? matchMode,
     int? numOfMatches,
     bool? legacy,
@@ -119,7 +139,7 @@ class AndroidOptions {
 
   @override
   String toString() =>
-      'AndroidOptions(requestLocationPermission: $requestLocationPermission, scanMode: $scanMode, reportDelayMillis: $reportDelayMillis, callbackType: $callbackType, matchMode: $matchMode, numOfMatches: $numOfMatches, legacy: $legacy)';
+      'AndroidOptions(requestLocationPermission: $requestLocationPermission, scanMode: $scanMode, reportDelayMillis: $reportDelayMillis, callbackType: ${callbackType?.length ?? 0}, matchMode: $matchMode, numOfMatches: $numOfMatches, legacy: $legacy)';
 }
 
 class AppleConnectionOptions {

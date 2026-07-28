@@ -6,6 +6,7 @@ final class PrinterConnectAsyncServiceDiscovery {
     private let logger = PrinterConnectLogger.shared
     private let peripheral: CBPeripheral
     private let completion: (Result<[UniversalBleService], PigeonError>) -> Void
+    private let withDescriptors: Bool
 
     private var discoveredServices: [UniversalBleService] = []
     private var serviceCharacteristicsMap: [String: [CBCharacteristic]] = [:]
@@ -19,8 +20,9 @@ final class PrinterConnectAsyncServiceDiscovery {
 
     private var allServicesReady: Bool = false
 
-    init(peripheral: CBPeripheral, completion: @escaping (Result<[UniversalBleService], PigeonError>) -> Void) {
+    init(peripheral: CBPeripheral, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], PigeonError>) -> Void) {
         self.peripheral = peripheral
+        self.withDescriptors = withDescriptors
         self.completion = completion
     }
 
@@ -67,7 +69,7 @@ final class PrinterConnectAsyncServiceDiscovery {
         for service in services {
             let bleService = UniversalBleService(
                 uuid: service.uuid.uuidString,
-                isPrimary: service.isPrimary
+                characteristics: nil
             )
             discoveredServices.append(bleService)
             serviceCharacteristicsMap[service.uuid.uuidString] = []
@@ -83,8 +85,10 @@ final class PrinterConnectAsyncServiceDiscovery {
         characteristicsDiscovered += characteristicsList.count
         servicesWithCharacteristicsDiscovered += 1
 
-        for characteristic in characteristicsList {
-            peripheral.discoverDescriptors(for: characteristic)
+        if withDescriptors {
+            for characteristic in characteristicsList {
+                peripheral.discoverDescriptors(for: characteristic)
+            }
         }
 
         updateExpectedCounts()
@@ -111,26 +115,59 @@ final class PrinterConnectAsyncServiceDiscovery {
 
         for (_, characteristics) in serviceCharacteristicsMap {
             totalChars += characteristics.count
-            for characteristic in characteristics {
-                if let descriptors = characteristic.descriptors {
-                    totalDescs += descriptors.count
+            if withDescriptors {
+                for characteristic in characteristics {
+                    if let descriptors = characteristic.descriptors {
+                        totalDescs += descriptors.count
+                    }
                 }
             }
         }
 
         totalCharacteristicsExpected = totalChars
-        totalDescriptorsExpected = totalDescs
+        totalDescriptorsExpected = withDescriptors ? totalDescs : 0
     }
 
     private func checkForDiscoveryCompletion() {
         let allServicesDiscovered = servicesWithCharacteristicsDiscovered >= totalServicesExpected
         let allCharacteristicsDiscovered = characteristicsDiscovered >= totalCharacteristicsExpected
-        let allDescriptorsDiscovered = descriptorsDiscovered >= totalDescriptorsExpected
+        let allDescriptorsDiscovered = withDescriptors ? (descriptorsDiscovered >= totalDescriptorsExpected) : true
 
         if allServicesDiscovered && allCharacteristicsDiscovered && allDescriptorsDiscovered {
             allServicesReady = true
-            completion(.success(discoveredServices))
+            let result = buildResultServices()
+            completion(.success(result))
             cleanup()
         }
+    }
+
+    private func buildResultServices() -> [UniversalBleService] {
+        var result: [UniversalBleService] = []
+
+        for service in discoveredServices {
+            guard let characteristics = serviceCharacteristicsMap[service.uuid] else {
+                result.append(service)
+                continue
+            }
+
+            let bleCharacteristics = characteristics.map { char in
+                let descriptors = (withDescriptors ? (char.descriptors ?? []).map { desc in
+                    UniversalBleDescriptor(uuid: desc.uuid.uuidString)
+                } : [])
+
+                return UniversalBleCharacteristic(
+                    uuid: char.uuid.uuidString,
+                    properties: char.properties.toCharacteristicProperty,
+                    descriptors: descriptors
+                )
+            }
+
+            result.append(UniversalBleService(
+                uuid: service.uuid,
+                characteristics: bleCharacteristics
+            ))
+        }
+
+        return result
     }
 }

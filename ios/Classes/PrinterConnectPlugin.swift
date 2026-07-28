@@ -28,12 +28,11 @@ public class PrinterConnectPlugin: NSObject, FlutterPlugin {
     }
 }
 
-class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
+class BleCentralDarwin: NSObject, UniversalBlePlatformChannel {
 
     private var centralManager: CBCentralManager!
     private var peripherals: [String: CBPeripheral] = [:]
     private var scanFilter: UniversalScanFilter?
-    private var isScanningActive: Bool = false
     private var autoConnectDevices: Set<String> = []
 
     private var readFutures: [String: CharacteristicReadFuture] = [:]
@@ -69,24 +68,24 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         callbackChannel?.onAvailabilityChanged(state: state) { _ in }
     }
 
-    private func sendPairStateChange(peripheralId: String, isPaired: Bool) {
-        callbackChannel?.onPairStateChange(peripheralId: peripheralId, isPaired: isPaired) { _ in }
+    private func sendPairStateChange(deviceId: String, isPaired: Bool, error: String?) {
+        callbackChannel?.onPairStateChange(deviceId: deviceId, isPaired: isPaired, error: error) { _ in }
     }
 
     private func sendScanResult(_ result: UniversalBleScanResult) {
         callbackChannel?.onScanResult(result: result) { _ in }
     }
 
-    private func sendValueChanged(peripheralId: String, serviceId: String, characteristicId: String, value: [Int64]) {
-        callbackChannel?.onValueChanged(peripheralId: peripheralId, serviceId: serviceId, characteristicId: characteristicId, value: value) { _ in }
+    private func sendValueChanged(deviceId: String, characteristicId: String, value: FlutterStandardTypedData, timestamp: Int64?) {
+        callbackChannel?.onValueChanged(deviceId: deviceId, characteristicId: characteristicId, value: value, timestamp: timestamp) { _ in }
     }
 
-    private func sendConnectionChanged(peripheralId: String, state: BleConnectionState) {
-        callbackChannel?.onConnectionChanged(peripheralId: peripheralId, state: state) { _ in }
+    private func sendConnectionChanged(deviceId: String, connected: Bool, error: String?) {
+        callbackChannel?.onConnectionChanged(deviceId: deviceId, connected: connected, error: error) { _ in }
     }
 
     private func sendConnectionParametersUpdated(_ result: BleConnectionParametersUpdated) {
-        callbackChannel?.onConnectionParametersUpdated(result: result) { _ in }
+        callbackChannel?.onConnectionParametersUpdated(update: result) { _ in }
     }
 
     private func getPeripheral(_ peripheralId: String) -> CBPeripheral? {
@@ -110,34 +109,31 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         return "\(peripheralId)_\(serviceId)_\(characteristicId)"
     }
 
-    func getBluetoothAvailabilityState(completion: @escaping (Result<AvailabilityState, PigeonError>) -> Void) {
+    func getBluetoothAvailabilityState(completion: @escaping (Result<AvailabilityState, Error>) -> Void) {
         let state = centralManager.state.toAvailabilityState
         completion(.success(state))
     }
 
-    func hasPermissions(completion: @escaping (Result<Bool, PigeonError>) -> Void) {
+    func hasPermissions(withAndroidFineLocation: Bool) throws -> Bool {
         #if os(iOS)
         if #available(iOS 13.1, *) {
             let authorization = CBCentralManager.authorization
-            let hasPermissions = authorization != .denied && authorization != .restricted
-            completion(.success(hasPermissions))
+            return authorization != .denied && authorization != .restricted
         } else {
             let state = centralManager.state
-            let hasPermissions = state != .unsupported && state != .unauthorized
-            completion(.success(hasPermissions))
+            return state != .unsupported && state != .unauthorized
         }
         #elseif os(macOS)
         let state = centralManager.state
-        let hasPermissions = state != .unsupported && state != .unauthorized
-        completion(.success(hasPermissions))
+        return state != .unsupported && state != .unauthorized
         #endif
     }
 
-    func requestPermissions(completion: @escaping (Result<Bool, PigeonError>) -> Void) {
+    func requestPermissions(withAndroidFineLocation: Bool, completion: @escaping (Result<Void, Error>) -> Void) {
         let state = centralManager.state
         switch state {
         case .poweredOn, .poweredOff, .resetting:
-            completion(.success(true))
+            completion(.success(()))
         case .unauthorized:
             completion(.failure(PigeonError(
                 code: "permissionsDenied",
@@ -165,7 +161,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         }
     }
 
-    func enableBluetooth(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    func enableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void) {
         #if os(iOS)
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
             completion(.failure(PigeonError(
@@ -179,10 +175,10 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         #endif
-        completion(.success(()))
+        completion(.success(true))
     }
 
-    func disableBluetooth(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    func disableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void) {
         #if os(iOS)
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
             completion(.failure(PigeonError(
@@ -196,67 +192,53 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
         #endif
-        completion(.success(()))
+        completion(.success(true))
     }
 
-    func startScan(filters filtersArg: [UniversalScanFilter], androidOptions androidOptionsArg: AndroidOptions, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        scanFilter = filtersArg.isEmpty ? nil : filtersArg
-        isScanningActive = true
+    func startScan(filter: UniversalScanFilter?, config: UniversalScanConfig?) throws {
+        scanFilter = filter
 
         guard centralManager.state == .poweredOn else {
-            isScanningActive = false
-            completion(.failure(PigeonError(
+            throw PigeonError(
                 code: "bluetoothNotReady",
                 message: "Bluetooth is not powered on",
                 details: nil
-            )))
-            return
+            )
         }
 
         var uuidsToScan: [CBUUID]? = nil
-        if let filters = scanFilter {
-            var allServices: Set<String> = []
-            for filter in filters {
-                if let services = filter.withServices {
-                    for service in services {
-                        allServices.insert(service)
-                    }
-                }
-            }
-            if !allServices.isEmpty {
-                uuidsToScan = Array(allServices.map { CBUUID(string: $0) })
+        if let filter = filter {
+            if !filter.withServices.isEmpty {
+                uuidsToScan = filter.withServices.map { CBUUID(string: $0) }
             }
         }
 
-        centralManager.scanForPeripherals(withServices: uuidsToScan, options: nil)
-        completion(.success(()))
+        let options: [String: Any] = [CBCentralManagerScanOptionAllowDuplicatesKey: true]
+        centralManager.scanForPeripherals(withServices: uuidsToScan, options: options)
     }
 
-    func stopScan(completion: @escaping (Result<Void, PigeonError>) -> Void) {
+    func stopScan() throws {
         centralManager.stopScan()
-        isScanningActive = false
-        completion(.success(()))
     }
 
-    func isScanning(completion: @escaping (Result<Bool, PigeonError>) -> Void) {
-        completion(.success(isScanningActive))
+    func isScanning() throws -> Bool {
+        return centralManager.isScanning
     }
 
-    func connect(peripheralId peripheralIdArg: String, config configArg: ConnectionPlatformConfig, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
-            completion(.failure(PigeonError(
+    func connect(deviceId: String, autoConnect: Bool?, platformConfig: ConnectionPlatformConfig?) throws {
+        guard let peripheral = getPeripheral(deviceId) else {
+            throw PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
-            )))
-            return
+            )
         }
 
         peripheral.delegate = self
 
         var options: [String: Any] = [:]
         #if os(iOS)
-        if let appleOptions = configArg.apple {
+        if let appleOptions = platformConfig?.apple {
             if let notifyOnConnection = appleOptions.notifyOnConnection, notifyOnConnection {
                 options[CBConnectPeripheralOptionNotifyOnConnectionKey] = true
             }
@@ -268,79 +250,125 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             }
         }
         if #available(iOS 17.0, *) {
-            options[CBConnectPeripheralOptionEnableAutoReconnect] = true
+            if autoConnect ?? false {
+                options[CBConnectPeripheralOptionEnableAutoReconnect] = true
+            }
         } else {
-            logger.logWarning("autoConnect (CBConnectPeripheralOptionEnableAutoReconnect) is only available on iOS 17+")
+            if autoConnect ?? false {
+                logger.logWarning("autoConnect (CBConnectPeripheralOptionEnableAutoReconnect) is only available on iOS 17+")
+            }
         }
         #endif
 
-        autoConnectDevices.insert(peripheralIdArg)
+        if autoConnect ?? false {
+            autoConnectDevices.insert(deviceId)
+        }
 
-        connectionFutures[peripheralIdArg] = ConnectionStateFuture { result in
+        connectionFutures[deviceId] = ConnectionStateFuture { [weak self] result in
+            guard let self = self else { return }
             switch result {
             case .success:
-                completion(.success(()))
+                self.sendConnectionChanged(deviceId: deviceId, connected: true, error: nil)
             case .failure(let error):
-                completion(.failure(error))
+                self.sendConnectionChanged(deviceId: deviceId, connected: false, error: error.message)
             }
         }
 
         centralManager.connect(peripheral, options: options)
     }
 
-    func disconnect(peripheralId peripheralIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        autoConnectDevices.remove(peripheralIdArg)
+    func disconnect(deviceId: String) throws {
+        autoConnectDevices.remove(deviceId)
 
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
-            completion(.failure(PigeonError(
+        guard let peripheral = getPeripheral(deviceId) else {
+            throw PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
-            )))
-            return
+            )
         }
 
-        guard peripheral.state != .disconnected else {
-            cleanUpConnection(peripheralIdArg)
-            completion(.success(()))
-            return
-        }
-
-        connectionFutures[peripheralIdArg] = ConnectionStateFuture { result in
-            switch result {
-            case .success:
-                self.cleanUpConnection(peripheralIdArg)
-                completion(.success(()))
-            case .failure(let error):
-                self.cleanUpConnection(peripheralIdArg)
-                completion(.failure(error))
+        if peripheral.state != .disconnected {
+            connectionFutures[deviceId] = ConnectionStateFuture { [weak self] result in
+                guard let self = self else { return }
+                self.cleanUpConnection(deviceId)
+                switch result {
+                case .success:
+                    self.sendConnectionChanged(deviceId: deviceId, connected: false, error: nil)
+                case .failure(let error):
+                    self.sendConnectionChanged(deviceId: deviceId, connected: false, error: error.message)
+                }
             }
-        }
 
-        centralManager.cancelPeripheralConnection(peripheral)
+            centralManager.cancelPeripheralConnection(peripheral)
+        } else {
+            cleanUpConnection(deviceId)
+            sendConnectionChanged(deviceId: deviceId, connected: false, error: nil)
+        }
     }
 
     private func cleanUpConnection(_ peripheralId: String) {
-        readFutures.removeValue(forKey: peripheralId)
-        writeFutures.removeValue(forKey: peripheralId)
-        notifyFutures.removeValue(forKey: peripheralId)
-        rssiFutures.removeValue(forKey: peripheralId)
-        mtuFutures.removeValue(forKey: peripheralId)
-        discoverFutures.removeValue(forKey: peripheralId)
+        let error = PigeonError(
+            code: "connectionClosed",
+            message: "Connection closed",
+            details: nil
+        )
+
+        for (key, future) in readFutures {
+            if key.hasPrefix(peripheralId) {
+                future.completion(.failure(error))
+            }
+        }
+        readFutures = readFutures.filter { !$0.key.hasPrefix(peripheralId) }
+
+        for (key, future) in writeFutures {
+            if key.hasPrefix(peripheralId) {
+                future.completion(.failure(error))
+            }
+        }
+        writeFutures = writeFutures.filter { !$0.key.hasPrefix(peripheralId) }
+
+        for (key, future) in notifyFutures {
+            if key.hasPrefix(peripheralId) {
+                future.completion(.failure(error))
+            }
+        }
+        notifyFutures = notifyFutures.filter { !$0.key.hasPrefix(peripheralId) }
+
+        if let future = rssiFutures.removeValue(forKey: peripheralId) {
+            future.completion(.failure(error))
+        }
+
+        if let future = mtuFutures.removeValue(forKey: peripheralId) {
+            future.completion(.failure(error))
+        }
+
+        if let future = discoverFutures.removeValue(forKey: peripheralId) {
+            future.completion(.failure(error))
+        }
+
+        if let future = connectionFutures.removeValue(forKey: peripheralId) {
+            future.completion(.failure(error))
+        }
+
+        if let future = pairedFutures.removeValue(forKey: peripheralId) {
+            future.completion(.failure(error))
+        }
+
         serviceDiscoveries.removeValue(forKey: peripheralId)
     }
 
-    func setNotifiable(peripheralId peripheralIdArg: String, serviceId serviceIdArg: String, characteristicId characteristicIdArg: String, value valueArg: BleInputProperty, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func setNotifiable(deviceId: String, service: String, characteristic: String, bleInputProperty: BleInputProperty, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
         }
 
-        let key = key(peripheralIdArg, serviceIdArg, characteristicIdArg)
+        let key = key(deviceId, service, characteristic)
         notifyFutures[key] = CharacteristicNotifyFuture { result in
             switch result {
             case .success:
@@ -350,32 +378,52 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             }
         }
 
-        guard let characteristic = getCharacteristic(peripheralIdArg, serviceIdArg, characteristicIdArg) else {
+        guard let characteristicObj = getCharacteristic(deviceId, service, characteristic) else {
             notifyFutures.removeValue(forKey: key)
             completion(.failure(PigeonError(
                 code: "characteristicNotFound",
-                message: "Characteristic not found: \(characteristicIdArg)",
+                message: "Characteristic not found: \(characteristic)",
                 details: nil
             )))
             return
         }
 
         let enable: Bool
-        switch valueArg {
-        case .notification, .indication:
+        switch bleInputProperty {
+        case .notification:
+            guard characteristicObj.properties.contains(.notify) else {
+                notifyFutures.removeValue(forKey: key)
+                completion(.failure(PigeonError(
+                    code: "notSupported",
+                    message: "Characteristic does not support notify",
+                    details: nil
+                )))
+                return
+            }
+            enable = true
+        case .indication:
+            guard characteristicObj.properties.contains(.indicate) else {
+                notifyFutures.removeValue(forKey: key)
+                completion(.failure(PigeonError(
+                    code: "notSupported",
+                    message: "Characteristic does not support indicate",
+                    details: nil
+                )))
+                return
+            }
             enable = true
         case .disabled:
             enable = false
         }
 
-        peripheral.setNotifyValue(enable, for: characteristic)
+        peripheral.setNotifyValue(enable, for: characteristicObj)
     }
 
-    func discoverServices(peripheralId peripheralIdArg: String, completion: @escaping (Result<[UniversalBleService], PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func discoverServices(deviceId: String, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
@@ -383,57 +431,57 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
 
         peripheral.delegate = self
 
-        let discovery = PrinterConnectAsyncServiceDiscovery(peripheral: peripheral) { [weak self] result in
+        let discovery = PrinterConnectAsyncServiceDiscovery(peripheral: peripheral, withDescriptors: withDescriptors) { [weak self] result in
             guard let self = self else { return }
-            self.discoverFutures.removeValue(forKey: peripheralIdArg)
-            self.serviceDiscoveries.removeValue(forKey: peripheralIdArg)
+            self.discoverFutures.removeValue(forKey: deviceId)
+            self.serviceDiscoveries.removeValue(forKey: deviceId)
             completion(result)
         }
 
-        serviceDiscoveries[peripheralIdArg] = discovery
-        discoverFutures[peripheralIdArg] = DiscoverServicesFuture(completion: completion)
+        serviceDiscoveries[deviceId] = discovery
+        discoverFutures[deviceId] = DiscoverServicesFuture(completion: completion)
 
         discovery.startDiscovery()
     }
 
-    func readValue(peripheralId peripheralIdArg: String, serviceId serviceIdArg: String, characteristicId characteristicIdArg: String, completion: @escaping (Result<UniversalBleCharacteristic, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func readValue(deviceId: String, service: String, characteristic: String, completion: @escaping (Result<FlutterStandardTypedData, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
         }
 
-        let key = key(peripheralIdArg, serviceIdArg, characteristicIdArg)
+        let key = key(deviceId, service, characteristic)
         readFutures[key] = CharacteristicReadFuture { result in
             switch result {
-            case .success(let characteristic):
-                completion(.success(characteristic))
+            case .success(let data):
+                completion(.success(data))
             case .failure(let error):
                 completion(.failure(error))
             }
         }
 
-        guard let characteristic = getCharacteristic(peripheralIdArg, serviceIdArg, characteristicIdArg) else {
+        guard let characteristicObj = getCharacteristic(deviceId, service, characteristic) else {
             readFutures.removeValue(forKey: key)
             completion(.failure(PigeonError(
                 code: "characteristicNotFound",
-                message: "Characteristic not found: \(characteristicIdArg)",
+                message: "Characteristic not found: \(characteristic)",
                 details: nil
             )))
             return
         }
 
-        peripheral.readValue(for: characteristic)
+        peripheral.readValue(for: characteristicObj)
     }
 
-    func requestMtu(peripheralId peripheralIdArg: String, mtu mtuArg: Int64, completion: @escaping (Result<Int64, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func requestMtu(deviceId: String, expectedMtu: Int64, completion: @escaping (Result<Int64, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
@@ -450,7 +498,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         }
         #endif
 
-        mtuFutures[peripheralIdArg] = MtuFuture { result in
+        mtuFutures[deviceId] = MtuFuture { result in
             switch result {
             case .success(let mtu):
                 completion(.success(mtu))
@@ -462,17 +510,17 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         peripheral.requestMtu()
     }
 
-    func writeValue(peripheralId peripheralIdArg: String, serviceId serviceIdArg: String, characteristicId characteristicIdArg: String, value valueArg: [Int64], bleOutputProperty bleOutputPropertyArg: BleOutputProperty, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func writeValue(deviceId: String, service: String, characteristic: String, value: FlutterStandardTypedData, bleOutputProperty: BleOutputProperty, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
         }
 
-        let key = key(peripheralIdArg, serviceIdArg, characteristicIdArg)
+        let key = key(deviceId, service, characteristic)
         writeFutures[key] = CharacteristicWriteFuture { result in
             switch result {
             case .success:
@@ -482,29 +530,27 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             }
         }
 
-        guard let characteristic = getCharacteristic(peripheralIdArg, serviceIdArg, characteristicIdArg) else {
+        guard let characteristicObj = getCharacteristic(deviceId, service, characteristic) else {
             writeFutures.removeValue(forKey: key)
             completion(.failure(PigeonError(
                 code: "characteristicNotFound",
-                message: "Characteristic not found: \(characteristicIdArg)",
+                message: "Characteristic not found: \(characteristic)",
                 details: nil
             )))
             return
         }
 
-        let data = Data(int64List: valueArg)
+        let data = value.data
 
         let writeType: CBCharacteristicWriteType
-        switch bleOutputPropertyArg {
-        case .writeWithoutResponse:
+        switch bleOutputProperty {
+        case .withResponse:
+            writeType = .withResponse
+        case .withoutResponse:
             writeType = .withoutResponse
-        case .write:
-            writeType = .withResponse
-        case .none:
-            writeType = .withResponse
         }
 
-        peripheral.writeValue(data, for: characteristic, type: writeType)
+        peripheral.writeValue(data, for: characteristicObj, type: writeType)
 
         if writeType == .withoutResponse {
             writeFutures.removeValue(forKey: key)
@@ -512,11 +558,11 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         }
     }
 
-    func isPaired(peripheralId peripheralIdArg: String, completion: @escaping (Result<Bool, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func isPaired(deviceId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
@@ -524,48 +570,48 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         completion(.success(peripheral.state == .connected))
     }
 
-    func pair(peripheralId peripheralIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func pair(deviceId: String, completion: @escaping (Result<Bool, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
         }
-        completion(.success(()))
+        completion(.success(true))
     }
 
-    func unPair(peripheralId peripheralIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
-            completion(.failure(PigeonError(
+    func unPair(deviceId: String) throws {
+        guard let peripheral = getPeripheral(deviceId) else {
+            throw PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
-            )))
-            return
+            )
         }
 
         if peripheral.state == .connected {
+            autoConnectDevices.remove(deviceId)
             centralManager.cancelPeripheralConnection(peripheral)
         }
-        completion(.success(()))
     }
 
-    func getSystemDevices(withServices withServicesArg: [String]?, completion: @escaping (Result<[UniversalBleScanResult], PigeonError>) -> Void) {
-        let services = withServicesArg?.compactMap { CBUUID(string: $0) } ?? []
+    func getSystemDevices(withServices: [String], completion: @escaping (Result<[UniversalBleScanResult], Error>) -> Void) {
+        let services = withServices.compactMap { CBUUID(string: $0) }
         let connected = centralManager.retrieveConnectedPeripherals(withServices: services.isEmpty ? nil : services)
         var results: [UniversalBleScanResult] = []
 
         for peripheral in connected {
             let result = UniversalBleScanResult(
-                peripheralId: peripheral.identifier.uuidString,
+                deviceId: peripheral.identifier.uuidString,
                 name: peripheral.name,
+                isPaired: nil,
                 rssi: 0,
-                manufacturerData: nil,
+                manufacturerDataList: nil,
                 serviceData: nil,
-                serviceUuids: withServicesArg,
-                txPowerLevel: nil
+                services: withServices,
+                timestamp: nil
             )
             results.append(result)
         }
@@ -573,39 +619,35 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         completion(.success(results))
     }
 
-    func getConnectionState(peripheralId peripheralIdArg: String, completion: @escaping (Result<BleConnectionState, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
-            completion(.failure(PigeonError(
+    func getConnectionState(deviceId: String) throws -> BleConnectionState {
+        guard let peripheral = getPeripheral(deviceId) else {
+            throw PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
-            )))
-            return
+            )
         }
 
-        let state: BleConnectionState
         switch peripheral.state {
-        case .disconnected: state = .disconnected
-        case .connecting: state = .connecting
-        case .connected: state = .connected
-        case .disconnecting: state = .disconnecting
-        @unknown default: state = .disconnected
+        case .disconnected: return .disconnected
+        case .connecting: return .connecting
+        case .connected: return .connected
+        case .disconnecting: return .disconnecting
+        @unknown default: return .disconnected
         }
-
-        completion(.success(state))
     }
 
-    func readRssi(peripheralId peripheralIdArg: String, completion: @escaping (Result<Int64, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func readRssi(deviceId: String, completion: @escaping (Result<Int64, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
         }
 
-        rssiFutures[peripheralIdArg] = RssiReadFuture { result in
+        rssiFutures[deviceId] = RssiReadFuture { result in
             switch result {
             case .success(let rssi):
                 completion(.success(rssi))
@@ -617,11 +659,11 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         peripheral.readRSSI()
     }
 
-    func requestConnectionPriority(peripheralId peripheralIdArg: String, priority priorityArg: BleConnectionPriority, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        guard let peripheral = getPeripheral(peripheralIdArg) else {
+    func requestConnectionPriority(deviceId: String, priority: BleConnectionPriority, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let peripheral = getPeripheral(deviceId) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
-                message: "Peripheral not found: \(peripheralIdArg)",
+                message: "Peripheral not found: \(deviceId)",
                 details: nil
             )))
             return
@@ -629,13 +671,17 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
 
         #if os(iOS)
         guard #available(iOS 13.0, *) else {
-            completion(.success(()))
+            completion(.failure(PigeonError(
+                code: "notSupported",
+                message: "requestConnectionPriority requires iOS 13+",
+                details: nil
+            )))
             return
         }
         #endif
 
         let priorityValue: CBConnectionPriority
-        switch priorityArg {
+        switch priority {
         case .balanced:
             priorityValue = .balanced
         case .highPerformance:
@@ -648,9 +694,8 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         completion(.success(()))
     }
 
-    func setLogLevel(level levelArg: BleLogLevel, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-        logger.setLogLevel(levelArg)
-        completion(.success(()))
+    func setLogLevel(logLevel: BleLogLevel) throws {
+        logger.setLogLevel(logLevel)
     }
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -680,7 +725,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         peripherals[peripheral.identifier.uuidString] = peripheral
 
-        if let result = PrinterConnectFilterUtil.filterDevice(peripheral, advertisementData: advertisementData, rssi: rssi, filters: scanFilter) {
+        if let result = PrinterConnectFilterUtil.filterDevice(peripheral, advertisementData: advertisementData, rssi: rssi, filter: scanFilter) {
             sendScanResult(result)
         }
     }
@@ -691,29 +736,32 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
 
         peripheral.delegate = self
 
-        sendConnectionChanged(peripheralId: peripheralId, state: .connected)
-
         if let future = connectionFutures.removeValue(forKey: peripheralId) {
             future.completion(.success(()))
+        } else {
+            sendConnectionChanged(deviceId: peripheralId, connected: true, error: nil)
         }
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         let peripheralId = peripheral.identifier.uuidString
 
-        sendConnectionChanged(peripheralId: peripheralId, state: .disconnected)
-
         if let error = error {
             if let future = connectionFutures.removeValue(forKey: peripheralId) {
                 future.completion(.failure(error.toPigeonError()))
+            } else {
+                sendConnectionChanged(deviceId: peripheralId, connected: false, error: error.localizedDescription)
             }
         } else {
+            let pigeonError = PigeonError(
+                code: "connectionFailed",
+                message: "Failed to connect",
+                details: nil
+            )
             if let future = connectionFutures.removeValue(forKey: peripheralId) {
-                future.completion(.failure(PigeonError(
-                    code: "connectionFailed",
-                    message: "Failed to connect",
-                    details: nil
-                )))
+                future.completion(.failure(pigeonError))
+            } else {
+                sendConnectionChanged(deviceId: peripheralId, connected: false, error: "Failed to connect")
             }
         }
     }
@@ -721,13 +769,18 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         let peripheralId = peripheral.identifier.uuidString
 
-        sendConnectionChanged(peripheralId: peripheralId, state: .disconnected)
-
         if let future = connectionFutures.removeValue(forKey: peripheralId) {
             if let error = error {
                 future.completion(.failure(error.toPigeonError()))
             } else {
                 future.completion(.success(()))
+            }
+        } else {
+            cleanUpConnection(peripheralId)
+            if let error = error {
+                sendConnectionChanged(deviceId: peripheralId, connected: false, error: error.localizedDescription)
+            } else {
+                sendConnectionChanged(deviceId: peripheralId, connected: false, error: nil)
             }
         }
     }
@@ -761,7 +814,16 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
 
         guard let discovery = serviceDiscoveries[peripheralId] else {
             let services = peripheral.services ?? []
-            let bleServices = services.map { UniversalBleService(uuid: $0.uuid.uuidString, isPrimary: $0.isPrimary) }
+            let bleServices = services.map { service -> UniversalBleService in
+                let characteristics = service.characteristics?.map { char -> UniversalBleCharacteristic in
+                    UniversalBleCharacteristic(
+                        uuid: char.uuid.uuidString,
+                        properties: char.properties.toCharacteristicProperty,
+                        descriptors: []
+                    )
+                } ?? []
+                return UniversalBleService(uuid: service.uuid.uuidString, characteristics: characteristics)
+            }
             if let future = discoverFutures.removeValue(forKey: peripheralId) {
                 future.completion(.success(bleServices))
             }
@@ -814,23 +876,29 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             return
         }
 
-        let valueList = characteristic.value?.toInt64List() ?? []
-
-        let bleCharacteristic = UniversalBleCharacteristic(
-            uuid: characteristic.uuid.uuidString,
-            properties: characteristic.properties.toCharacteristicProperty,
-            value: valueList
-        )
-
-        if let future = readFutures.removeValue(forKey: key) {
-            future.completion(.success(bleCharacteristic))
+        guard let value = characteristic.value else {
+            if let future = readFutures.removeValue(forKey: key) {
+                future.completion(.failure(PigeonError(
+                    code: "unknown",
+                    message: "Characteristic value is nil",
+                    details: nil
+                )))
+            }
+            return
         }
 
+        let flutterData = FlutterStandardTypedData(bytes: value)
+
+        if let future = readFutures.removeValue(forKey: key) {
+            future.completion(.success(flutterData))
+        }
+
+        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
         sendValueChanged(
-            peripheralId: peripheralId,
-            serviceId: characteristic.service?.uuid.uuidString ?? "",
+            deviceId: peripheralId,
             characteristicId: characteristic.uuid.uuidString,
-            value: valueList
+            value: flutterData,
+            timestamp: timestamp
         )
     }
 
@@ -908,12 +976,11 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         }
 
         let updated = BleConnectionParametersUpdated(
-            mtu: Int64(mtu),
             deviceId: peripheralId,
-            interval: nil,
-            latency: nil,
-            supervisionTimeout: nil,
-            status: nil
+            interval: 0,
+            latency: 0,
+            supervisionTimeout: 0,
+            status: 0
         )
         sendConnectionParametersUpdated(updated)
     }
@@ -924,7 +991,6 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         logger.logDebug("Connection parameters updated for \(peripheralId): interval=\(parameters.interval), latency=\(parameters.latency), supervisionTimeout=\(parameters.supervisionTimeout)")
 
         let updated = BleConnectionParametersUpdated(
-            mtu: Int64(peripheral.maximumWriteValueLength(for: .withResponse)),
             deviceId: peripheralId,
             interval: Int64(parameters.interval),
             latency: Int64(parameters.latency),

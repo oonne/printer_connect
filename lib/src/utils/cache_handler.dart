@@ -19,11 +19,5 @@ class CacheHandler {
     _servicesCache.remove(deviceId.toLowerCase());
   }
 
-  void resetAllCache() {
-    _servicesCache.clear();
-  }
-
-  bool hasCachedServices(String deviceId) {
-    return _servicesCache.containsKey(deviceId.toLowerCase());
-  }
+  
 }

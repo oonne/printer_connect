@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.ScanResult
+import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -110,32 +111,24 @@ fun Context.registerReceiverCompat(receiver: android.content.BroadcastReceiver, 
 
 @SuppressLint("MissingPermission")
 fun BluetoothGatt.saveCacheIfNeeded() {
-    try {
-        val method = javaClass.methods.find { it.name == "saveCache" }
-        if (method != null) {
-            method.invoke(this)
-        }
-    } catch (e: Exception) {
-        PrinterConnectLogger.logWarning("saveCache not available: ${e.message}")
-    }
+    knownGatts[this.device.address] = this
 }
 
 @SuppressLint("MissingPermission")
 fun BluetoothGatt.removeCache() {
-    try {
-        val method = javaClass.methods.find { it.name == "removeCache" }
-        if (method != null) {
-            method.invoke(this)
-        }
-    } catch (e: Exception) {
-        PrinterConnectLogger.logWarning("removeCache not available: ${e.message}")
-    }
+    knownGatts.remove(this.device.address)
 }
 
+@SuppressLint("MissingPermission")
 fun ScanResult.resolvedDeviceName(): String? {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        this.deviceName
-    } else {
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val method = this.javaClass.getMethod("getDeviceName")
+            method.invoke(this) as? String
+        } else {
+            null
+        }
+    } catch (_: Exception) {
         null
     }
 }
@@ -148,8 +141,7 @@ fun ScanResult.manufacturerDataList(): List<UniversalManufacturerData> {
             val key = sparseArray.keyAt(i)
             val value = sparseArray.valueAt(i)
             if (value != null) {
-                val dataBytes = value.toList()
-                list.add(UniversalManufacturerData(key.toLong(), dataBytes.map { it.toLong() and 0xFFL }))
+                list.add(UniversalManufacturerData(key.toLong(), value))
             }
         }
     } catch (e: Exception) {
@@ -158,12 +150,12 @@ fun ScanResult.manufacturerDataList(): List<UniversalManufacturerData> {
     return list
 }
 
-fun ScanResult.serviceData(): List<Long> {
-    val result = mutableListOf<Long>()
+fun ScanResult.serviceData(): Map<String, ByteArray> {
+    val result = mutableMapOf<String, ByteArray>()
     try {
-        val serviceDataMap = this.scanRecord?.serviceData ?: return emptyList()
-        for ((_, value) in serviceDataMap) {
-            result.addAll(value.map { it.toLong() and 0xFFL })
+        val serviceDataMap = this.scanRecord?.serviceData ?: return emptyMap()
+        for ((uuid, value) in serviceDataMap) {
+            result[uuid.toString()] = value
         }
     } catch (e: Exception) {
         PrinterConnectLogger.logWarning("Error reading service data: ${e.message}")
@@ -194,14 +186,17 @@ fun BluetoothGattCharacteristic.getPropertiesList(): List<CharacteristicProperty
     val properties = this.properties
     val list = mutableListOf<CharacteristicProperty>()
 
+    if (properties and BluetoothGattCharacteristic.PROPERTY_BROADCAST != 0) {
+        list.add(CharacteristicProperty.BROADCAST)
+    }
     if (properties and BluetoothGattCharacteristic.PROPERTY_READ != 0) {
         list.add(CharacteristicProperty.READ)
     }
-    if (properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) {
-        list.add(CharacteristicProperty.WRITE)
-    }
     if (properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0) {
         list.add(CharacteristicProperty.WRITE_WITHOUT_RESPONSE)
+    }
+    if (properties and BluetoothGattCharacteristic.PROPERTY_WRITE != 0) {
+        list.add(CharacteristicProperty.WRITE)
     }
     if (properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) {
         list.add(CharacteristicProperty.NOTIFY)
@@ -209,20 +204,11 @@ fun BluetoothGattCharacteristic.getPropertiesList(): List<CharacteristicProperty
     if (properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) {
         list.add(CharacteristicProperty.INDICATE)
     }
-    if (properties and BluetoothGattCharacteristic.PROPERTY_BROADCAST != 0) {
-        list.add(CharacteristicProperty.BROADCAST)
+    if (properties and BluetoothGattCharacteristic.PROPERTY_SIGNED_WRITE != 0) {
+        list.add(CharacteristicProperty.AUTHENTICATED_SIGNED_WRITES)
     }
     if (properties and BluetoothGattCharacteristic.PROPERTY_EXTENDED_PROPS != 0) {
-        list.add(CharacteristicProperty.EXTENDED_SBLE_PROPS)
-    }
-    if (properties and BluetoothGattCharacteristic.PROPERTY_SIGNED_WRITE != 0) {
-        list.add(CharacteristicProperty.SIGNED_WRITE)
-    }
-    if (properties and BluetoothGattCharacteristic.PROPERTY_ENCRYPT_READ != 0) {
-        // Mapping for encrypted read - no direct CharacteristicProperty, skip
-    }
-    if (properties and BluetoothGattCharacteristic.PROPERTY_ENCRYPT_WRITE != 0) {
-        // Mapping for encrypted write - no direct CharacteristicProperty, skip
+        list.add(CharacteristicProperty.EXTENDED_PROPERTIES)
     }
 
     return list
@@ -248,7 +234,6 @@ fun gattStatusToPrinterConnectErrorCode(status: Int): String {
         BluetoothGatt.GATT_INVALID_OFFSET -> "invalid_offset"
         BluetoothGatt.GATT_INSUFFICIENT_ENCRYPTION -> "insufficient_encryption"
         BluetoothGatt.GATT_INVALID_ATTRIBUTE_LENGTH -> "invalid_attribute_length"
-        BluetoothGatt.GATT_UNlikely -> "unlikely"
         else -> "gatt_error_$status"
     }
 }
@@ -265,58 +250,47 @@ fun Int.parseBluetoothStatusCodeError(): String {
 
 fun Int.parseScanErrorMessage(): String {
     return when (this) {
-        BluetoothAdapter.SCAN_MODE_LOW_POWER -> "Scan mode: low power"
-        BluetoothAdapter.SCAN_MODE_BALANCED -> "Scan mode: balanced"
-        BluetoothAdapter.SCAN_MODE_LOW_LATENCY -> "Scan mode: low latency"
-        BluetoothAdapter.SCAN_MODE_OPPORTUNISTIC -> "Scan mode: opportunistic"
+        ScanSettings.SCAN_MODE_LOW_POWER -> "Scan mode: low power"
+        ScanSettings.SCAN_MODE_BALANCED -> "Scan mode: balanced"
+        ScanSettings.SCAN_MODE_LOW_LATENCY -> "Scan mode: low latency"
+        ScanSettings.SCAN_MODE_OPPORTUNISTIC -> "Scan mode: opportunistic"
         else -> "Unknown scan mode error: $this"
     }
 }
 
 fun AndroidScanMode.Companion.parse(scanMode: Int): AndroidScanMode {
     return when (scanMode) {
-        BluetoothAdapter.SCAN_MODE_LOW_POWER -> AndroidScanMode.LOW_POWERED
-        BluetoothAdapter.SCAN_MODE_BALANCED -> AndroidScanMode.BALANCED
-        BluetoothAdapter.SCAN_MODE_LOW_LATENCY -> AndroidScanMode.LOW_LATENCY
-        else -> AndroidScanMode.LOW_POWERED
+        ScanSettings.SCAN_MODE_LOW_POWER -> AndroidScanMode.LOW_POWER
+        ScanSettings.SCAN_MODE_BALANCED -> AndroidScanMode.BALANCED
+        ScanSettings.SCAN_MODE_LOW_LATENCY -> AndroidScanMode.LOW_LATENCY
+        ScanSettings.SCAN_MODE_OPPORTUNISTIC -> AndroidScanMode.OPPORTUNISTIC
+        else -> AndroidScanMode.LOW_POWER
     }
 }
 
 fun AndroidScanCallbackType.Companion.parse(callbackType: Int): AndroidScanCallbackType {
     return when (callbackType) {
-        BluetoothScan.CALLBACK_TYPE_DEFAULT -> AndroidScanCallbackType.DEFAULT_
-        BluetoothScan.CALLBACK_TYPE_FIRST_MATCH -> AndroidScanCallbackType.FIRST_MATCH
-        BluetoothScan.CALLBACK_TYPE_MATCH_LOST -> AndroidScanCallbackType.LOSE
-        BluetoothScan.CALLBACK_TYPE_MATCHED -> AndroidScanCallbackType.MATCHED
-        else -> AndroidScanCallbackType.DEFAULT_
+        ScanSettings.CALLBACK_TYPE_ALL_MATCHES -> AndroidScanCallbackType.ALL_MATCHES
+        ScanSettings.CALLBACK_TYPE_FIRST_MATCH -> AndroidScanCallbackType.FIRST_MATCH
+        ScanSettings.CALLBACK_TYPE_MATCH_LOST -> AndroidScanCallbackType.MATCH_LOST
+        ScanSettings.CALLBACK_TYPE_ALL_MATCHES_AUTO_BATCH -> AndroidScanCallbackType.ALL_MATCHES_AUTO_BATCH
+        else -> AndroidScanCallbackType.ALL_MATCHES
     }
 }
 
 fun AndroidScanMatchMode.Companion.parse(matchMode: Int): AndroidScanMatchMode {
     return when (matchMode) {
-        BluetoothScan.MATCH_MODE_AGGRESSIVE -> AndroidScanMatchMode.STICKY
-        BluetoothScan.MATCH_MODE_STICKY -> AndroidScanMatchMode.STICKY
-        else -> AndroidScanMatchMode.DEFAULT_
+        ScanSettings.MATCH_MODE_AGGRESSIVE -> AndroidScanMatchMode.AGGRESSIVE
+        ScanSettings.MATCH_MODE_STICKY -> AndroidScanMatchMode.STICKY
+        else -> AndroidScanMatchMode.AGGRESSIVE
     }
 }
 
 fun AndroidScanNumOfMatches.Companion.parse(numOfMatches: Int): AndroidScanNumOfMatches {
     return when (numOfMatches) {
-        BluetoothScan.MATCH_NUM_ONE_ADVERTISEMENT -> AndroidScanNumOfMatches.ONE
-        BluetoothScan.MATCH_NUM_FEW_ADVERTISEMENT -> AndroidScanNumOfMatches.FEW
-        BluetoothScan.MATCH_NUM_MANY_ADVERTISEMENTS -> AndroidScanNumOfMatches.MANY
+        1 -> AndroidScanNumOfMatches.ONE
+        2 -> AndroidScanNumOfMatches.FEW
+        3 -> AndroidScanNumOfMatches.MAX
         else -> AndroidScanNumOfMatches.ONE
     }
-}
-
-private object BluetoothScan {
-    const val CALLBACK_TYPE_DEFAULT = 0
-    const val CALLBACK_TYPE_FIRST_MATCH = 1
-    const val CALLBACK_TYPE_MATCH_LOST = 2
-    const val CALLBACK_TYPE_MATCHED = 3
-    const val MATCH_MODE_AGGRESSIVE = 1
-    const val MATCH_MODE_STICKY = 2
-    const val MATCH_NUM_ONE_ADVERTISEMENT = 1
-    const val MATCH_NUM_FEW_ADVERTISEMENT = 2
-    const val MATCH_NUM_MANY_ADVERTISEMENTS = 3
 }

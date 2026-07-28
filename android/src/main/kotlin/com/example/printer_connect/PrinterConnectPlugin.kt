@@ -19,8 +19,10 @@ import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -40,34 +42,58 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
     private var scanCallback: ScanCallback? = null
     private var isScanning: Boolean = false
-    private var pendingScanFilters: List<UniversalScanFilter>? = null
+    private var pendingScanFilter: UniversalScanFilter? = null
+    private var pendingScanConfig: UniversalScanConfig? = null
 
     private val gattServers = ConcurrentHashMap<String, BluetoothGatt>()
     private val scanResults = mutableMapOf<String, UniversalBleScanResult>()
     private val cachedServices = ConcurrentHashMap<String, List<UniversalBleService>>()
     private val connectingDevices = ConcurrentHashMap.newKeySet<String>()
 
-    private val readFutures = ConcurrentHashMap<String, (Result<UniversalBleCharacteristic>) -> Unit>()
+    private val readFutures = ConcurrentHashMap<String, (Result<ByteArray>) -> Unit>()
     private val writeFutures = ConcurrentHashMap<String, (Result<Unit>) -> Unit>()
-    private val discoverFutures = ConcurrentHashMap<String, (Result<List<UniversalBleService>>) -> Unit>()
+    private val discoverFutures = ConcurrentHashMap<String, MutableList<(Result<List<UniversalBleService>>) -> Unit>>()
     private val rssiFutures = ConcurrentHashMap<String, (Result<Long>) -> Unit>()
     private val mtuFutures = ConcurrentHashMap<String, (Result<Long>) -> Unit>()
+    private val descriptorWriteFutures = ConcurrentHashMap<String, (Result<Unit>) -> Unit>()
+    private val descriptorReadFutures = ConcurrentHashMap<String, (Result<ByteArray>) -> Unit>()
 
     private val handler = Handler(Looper.getMainLooper())
 
-    private var permissionLauncher: ActivityResultLauncher<String>? = null
+    private var permissionLauncher: ActivityResultLauncher<Array<String>>? = null
     private var pendingPermissionResult: ((Boolean) -> Unit)? = null
 
     private var enableBluetoothLauncher: ActivityResultLauncher<Intent>? = null
     private var pendingEnableResult: ((Boolean) -> Unit)? = null
 
+    private val pendingPairResults = ConcurrentHashMap<String, (Result<Boolean>) -> Unit>()
+    private val bondingDevices = ConcurrentHashMap.newKeySet<String>()
+
     private val bondStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val bondStateChange = intent?.getBondStateChange() ?: return
             val deviceAddress = bondStateChange.deviceAddress
-            val isPaired = bondStateChange.bondState == BluetoothDevice.BOND_BONDED
-            sendPairStateChange(deviceAddress, isPaired)
-            PrinterConnectLogger.logDebug("Bond state changed for $deviceAddress: bonded=$isPaired")
+            val bondState = bondStateChange.bondState
+            val isPaired = bondState == BluetoothDevice.BOND_BONDED
+            sendPairStateChange(deviceAddress, isPaired, null)
+            PrinterConnectLogger.logDebug("Bond state changed for $deviceAddress: bondState=$bondState, bonded=$isPaired")
+
+            val pendingCallback = pendingPairResults[deviceAddress]
+            if (pendingCallback != null) {
+                when {
+                    isPaired -> {
+                        bondingDevices.remove(deviceAddress)
+                        handler.post { pendingCallback.invoke(Result.success(true)) }
+                    }
+                    bondState == BluetoothDevice.BOND_NONE -> {
+                        bondingDevices.remove(deviceAddress)
+                        handler.post { pendingCallback.invoke(Result.failure(FlutterError("pair_failed", "Pairing failed for $deviceAddress", null))) }
+                    }
+                    bondState == BluetoothDevice.BOND_BONDING -> {
+                        bondingDevices.add(deviceAddress)
+                    }
+                }
+            }
         }
     }
 
@@ -93,47 +119,80 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
                 gatt.close()
                 gattServers.remove(deviceAddress)
                 cachedServices.remove(deviceAddress)
-                sendConnectionChanged(deviceAddress, BleConnectionState.DISCONNECTED)
+                connectingDevices.remove(deviceAddress)
+                clearFuturesForDevice(deviceAddress)
+                sendConnectionChanged(deviceAddress, false, "Connection failed with status: $status")
                 return
             }
 
-            val bleState = newState.toBleConnectionState()
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     gattServers[deviceAddress] = gatt
+                    connectingDevices.remove(deviceAddress)
                     PrinterConnectLogger.logInfo("Connected to $deviceAddress")
+                    sendConnectionChanged(deviceAddress, true, null)
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     gatt.close()
                     gattServers.remove(deviceAddress)
                     cachedServices.remove(deviceAddress)
+                    connectingDevices.remove(deviceAddress)
                     clearFuturesForDevice(deviceAddress)
                     PrinterConnectLogger.logInfo("Disconnected from $deviceAddress")
+                    sendConnectionChanged(deviceAddress, false, null)
+                }
+                BluetoothProfile.STATE_CONNECTING -> {
+                    connectingDevices.add(deviceAddress)
+                    sendConnectionChanged(deviceAddress, false, null)
+                }
+                BluetoothProfile.STATE_DISCONNECTING -> {
+                    sendConnectionChanged(deviceAddress, false, null)
                 }
             }
-            sendConnectionChanged(deviceAddress, bleState)
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             val deviceAddress = gatt.device.address
             PrinterConnectLogger.logDebug("Services discovered for $deviceAddress, status=$status")
 
-            val future = discoverFutures.remove(deviceAddress)
+            val pendingList = discoverFutures.remove(deviceAddress)
+            if (pendingList.isNullOrEmpty()) {
+                PrinterConnectLogger.logWarning("No pending discoverServices for $deviceAddress")
+                return
+            }
+
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 PrinterConnectLogger.logError("Service discovery failed for $deviceAddress with status: $status")
-                future?.invoke(Result.failure(FlutterError("discover_failed", "Service discovery failed with status: $status", "")))
+                val error = Result.failure<List<UniversalBleService>>(
+                    FlutterError("discover_failed", "Service discovery failed with status: $status", "")
+                )
+                for (callback in pendingList) {
+                    callback.invoke(error)
+                }
                 return
             }
 
             gatt.saveCacheIfNeeded()
             val services = gatt.services.map { service ->
+                val characteristics = service.characteristics.map { char ->
+                    val descriptors = char.descriptors.map { desc ->
+                        UniversalBleDescriptor(uuid = desc.uuid.toString())
+                    }
+                    UniversalBleCharacteristic(
+                        uuid = char.uuid.toString(),
+                        properties = char.getPropertiesList(),
+                        descriptors = descriptors
+                    )
+                }
                 UniversalBleService(
                     uuid = service.uuid.toString(),
-                    isPrimary = service.isPrimary
+                    characteristics = characteristics
                 )
             }
             cachedServices[deviceAddress] = services
-            future?.invoke(Result.success(services))
+            for (callback in pendingList) {
+                callback.invoke(Result.success(services))
+            }
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
@@ -146,10 +205,8 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             val future = readFutures.remove(key)
             if (future != null) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    val valueBytes = characteristic.value
-                    val valueList = valueBytes?.map { it.toLong() and 0xFFL } ?: emptyList()
-                    val properties = characteristic.getPropertiesList()
-                    future.invoke(Result.success(UniversalBleCharacteristic(charUuid, properties, valueList)))
+                    val valueBytes = characteristic.value ?: ByteArray(0)
+                    future.invoke(Result.success(valueBytes))
                 } else {
                     future.invoke(Result.failure(FlutterError("read_failed", "Read failed with status: $status", "")))
                 }
@@ -175,24 +232,44 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
             val deviceAddress = gatt.device.address
-            val serviceUuid = characteristic.service.uuid.toString()
             val charUuid = characteristic.uuid.toString()
-            val valueBytes = characteristic.value
-            val valueList = valueBytes?.map { it.toLong() and 0xFFL } ?: emptyList()
-            PrinterConnectLogger.logDebug("Characteristic changed for $deviceAddress/$serviceUuid/$charUuid")
-            sendValueChanged(deviceAddress, serviceUuid, charUuid, valueList)
+            val valueBytes = characteristic.value ?: ByteArray(0)
+            val timestamp = System.currentTimeMillis()
+            PrinterConnectLogger.logDebug("Characteristic changed for $deviceAddress/$charUuid")
+            sendValueChanged(deviceAddress, charUuid, valueBytes, timestamp)
         }
 
         override fun onDescriptorRead(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             val deviceAddress = gatt.device.address
             val descUuid = descriptor.uuid.toString()
             PrinterConnectLogger.logDebug("Descriptor read for $deviceAddress/$descUuid, status=$status")
+
+            val key = "$deviceAddress/$descUuid"
+            val future = descriptorReadFutures.remove(key)
+            if (future != null) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    val valueBytes = descriptor.value ?: ByteArray(0)
+                    future.invoke(Result.success(valueBytes))
+                } else {
+                    future.invoke(Result.failure(FlutterError("descriptor_read_failed", "Descriptor read failed with status: $status", "")))
+                }
+            }
         }
 
         override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
             val deviceAddress = gatt.device.address
             val descUuid = descriptor.uuid.toString()
             PrinterConnectLogger.logDebug("Descriptor write for $deviceAddress/$descUuid, status=$status")
+
+            val key = "$deviceAddress/$descUuid"
+            val future = descriptorWriteFutures.remove(key)
+            if (future != null) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    future.invoke(Result.success(Unit))
+                } else {
+                    future.invoke(Result.failure(FlutterError("descriptor_write_failed", "Descriptor write failed with status: $status", "")))
+                }
+            }
         }
 
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
@@ -202,17 +279,42 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             val future = mtuFutures.remove(deviceAddress)
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 val updated = BleConnectionParametersUpdated(
-                    mtu = mtu.toLong(),
                     deviceId = deviceAddress,
-                    interval = null,
-                    latency = null,
-                    supervisionTimeout = null,
+                    interval = 0L,
+                    latency = 0L,
+                    supervisionTimeout = 0L,
                     status = status.toLong()
                 )
                 sendConnectionParametersUpdated(updated)
                 future?.invoke(Result.success(mtu.toLong()))
             } else {
                 future?.invoke(Result.failure(FlutterError("mtu_failed", "MTU change failed with status: $status", "")))
+            }
+        }
+
+        @Suppress("unused")
+        fun onConnectionUpdated(
+            gatt: BluetoothGatt?,
+            interval: Int,
+            latency: Int,
+            timeout: Int,
+            status: Int
+        ) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val deviceAddress = gatt?.device?.address ?: return
+            PrinterConnectLogger.logDebug(
+                "Connection updated for $deviceAddress: interval=$interval, latency=$latency, timeout=$timeout, status=$status"
+            )
+
+            val updated = BleConnectionParametersUpdated(
+                deviceId = deviceAddress,
+                interval = interval.toLong(),
+                latency = latency.toLong(),
+                supervisionTimeout = timeout.toLong(),
+                status = status.toLong()
+            )
+            handler.post {
+                sendConnectionParametersUpdated(updated)
             }
         }
 
@@ -250,7 +352,7 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         unregisterBluetoothStateReceiver()
         unregisterBondStateReceiver()
-        stopScanInternal()
+        stopScan()
         closeAllGattConnections()
         UniversalBlePlatformChannel.setUp(binaryMessenger, null)
         callbackChannel = null
@@ -261,20 +363,20 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         callbackChannel?.onAvailabilityChanged(state) { _ -> }
     }
 
-    private fun sendPairStateChange(peripheralId: String, isPaired: Boolean) {
-        callbackChannel?.onPairStateChange(peripheralId, isPaired) { _ -> }
+    private fun sendPairStateChange(deviceId: String, isPaired: Boolean, error: String?) {
+        callbackChannel?.onPairStateChange(deviceId, isPaired, error) { _ -> }
     }
 
     private fun sendScanResult(result: UniversalBleScanResult) {
         callbackChannel?.onScanResult(result) { _ -> }
     }
 
-    private fun sendValueChanged(peripheralId: String, serviceId: String, characteristicId: String, value: List<Long>) {
-        callbackChannel?.onValueChanged(peripheralId, serviceId, characteristicId, value) { _ -> }
+    private fun sendValueChanged(deviceId: String, characteristicId: String, value: ByteArray, timestamp: Long?) {
+        callbackChannel?.onValueChanged(deviceId, characteristicId, value, timestamp) { _ -> }
     }
 
-    private fun sendConnectionChanged(peripheralId: String, state: BleConnectionState) {
-        callbackChannel?.onConnectionChanged(peripheralId, state) { _ -> }
+    private fun sendConnectionChanged(deviceId: String, connected: Boolean, error: String?) {
+        callbackChannel?.onConnectionChanged(deviceId, connected, error) { _ -> }
     }
 
     private fun sendConnectionParametersUpdated(result: BleConnectionParametersUpdated) {
@@ -306,9 +408,14 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     private fun setupPermissionLauncher(binding: ActivityPluginBinding) {
-        permissionLauncher = binding.activity.registerForActivityResult(
+        val componentActivity = binding.activity as? ComponentActivity
+        if (componentActivity == null) {
+            PrinterConnectLogger.logError("Cannot register permission launcher: activity is not a ComponentActivity")
+            return
+        }
+        permissionLauncher = componentActivity.registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
-        ) { grants ->
+        ) { grants: Map<String, Boolean> ->
             val allGranted = grants.values.all { it }
             pendingPermissionResult?.invoke(allGranted)
             pendingPermissionResult = null
@@ -317,7 +424,12 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     private fun setupEnableBluetoothLauncher(binding: ActivityPluginBinding) {
-        enableBluetoothLauncher = binding.activity.registerForActivityResult(
+        val componentActivity = binding.activity as? ComponentActivity
+        if (componentActivity == null) {
+            PrinterConnectLogger.logError("Cannot register enable bluetooth launcher: activity is not a ComponentActivity")
+            return
+        }
+        enableBluetoothLauncher = componentActivity.registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
             val success = result.resultCode == android.app.Activity.RESULT_OK
@@ -374,6 +486,16 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             if (key.startsWith("$deviceAddress/")) keysToRemoveWrite.add(key)
         }
         for (key in keysToRemoveWrite) writeFutures.remove(key)
+        val keysToRemoveDesc = mutableListOf<String>()
+        for (key in descriptorWriteFutures.keys) {
+            if (key.startsWith("$deviceAddress/")) keysToRemoveDesc.add(key)
+        }
+        for (key in keysToRemoveDesc) descriptorWriteFutures.remove(key)
+        val keysToRemoveDescRead = mutableListOf<String>()
+        for (key in descriptorReadFutures.keys) {
+            if (key.startsWith("$deviceAddress/")) keysToRemoveDescRead.add(key)
+        }
+        for (key in keysToRemoveDescRead) descriptorReadFutures.remove(key)
     }
 
     private fun clearAllFutures() {
@@ -382,6 +504,27 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         discoverFutures.clear()
         rssiFutures.clear()
         mtuFutures.clear()
+        descriptorWriteFutures.clear()
+        descriptorReadFutures.clear()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun cleanConnection(gatt: BluetoothGatt) {
+        val deviceAddress = gatt.device.address
+        try {
+            gatt.close()
+        } catch (_: Exception) {}
+        gattServers.remove(deviceAddress)
+        cachedServices.remove(deviceAddress)
+        connectingDevices.remove(deviceAddress)
+        clearFuturesForDevice(deviceAddress)
+    }
+
+    private fun cleanUpConnection(deviceId: String) {
+        gattServers.remove(deviceId)
+        cachedServices.remove(deviceId)
+        connectingDevices.remove(deviceId)
+        clearFuturesForDevice(deviceId)
     }
 
     override fun getBluetoothAvailabilityState(callback: (Result<AvailabilityState>) -> Unit) {
@@ -393,45 +536,48 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         callback(Result.success(adapter.state.toAvailabilityState()))
     }
 
-    override fun hasPermissions(callback: (Result<Boolean>) -> Unit) {
+    override fun hasPermissions(withAndroidFineLocation: Boolean): Boolean {
         val ctx = context
-        if (ctx == null) {
-            callback(Result.success(false))
-            return
-        }
+        if (ctx == null) return false
         val permissions = PermissionHandler.getRequiredPermissions(ctx, forScan = true)
-        callback(Result.success(PermissionHandler.hasPermissions(ctx, permissions)))
+        return PermissionHandler.hasPermissions(ctx, permissions)
     }
 
-    override fun requestPermissions(callback: (Result<Boolean>) -> Unit) {
+    override fun requestPermissions(withAndroidFineLocation: Boolean, callback: (Result<Unit>) -> Unit) {
         val ctx = context
         val act = activityBinding?.activity
         if (ctx == null || act == null) {
-            callback(Result.success(false))
+            callback(Result.failure(FlutterError("no_activity", "Activity is required for permissions", null)))
             return
         }
 
         val permissions = PermissionHandler.getRequiredPermissions(ctx, forScan = true)
         if (PermissionHandler.hasPermissions(ctx, permissions)) {
-            callback(Result.success(true))
+            callback(Result.success(Unit))
             return
         }
 
         pendingPermissionResult = { granted ->
-            handler.post { callback(Result.success(granted)) }
+            handler.post {
+                if (granted) {
+                    callback(Result.success(Unit))
+                } else {
+                    callback(Result.failure(FlutterError("permission_denied", "Permissions denied", null)))
+                }
+            }
         }
         permissionLauncher?.launch(permissions.toTypedArray())
-            ?: callback(Result.success(false))
+            ?: callback(Result.failure(FlutterError("launch_failed", "Cannot launch permission request", null)))
     }
 
-    override fun enableBluetooth(callback: (Result<Unit>) -> Unit) {
+    override fun enableBluetooth(callback: (Result<Boolean>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
             callback(Result.failure(FlutterError("bluetooth_unavailable", "Bluetooth adapter not available", null)))
             return
         }
         if (adapter.isEnabled) {
-            callback(Result.success(Unit))
+            callback(Result.success(true))
             return
         }
 
@@ -442,34 +588,28 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         }
 
         pendingEnableResult = { success ->
-            handler.post {
-                if (success) {
-                    callback(Result.success(Unit))
-                } else {
-                    callback(Result.failure(FlutterError("enable_failed", "Failed to enable Bluetooth", null)))
-                }
-            }
+            handler.post { callback(Result.success(success)) }
         }
         val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
         enableBluetoothLauncher?.launch(enableIntent)
             ?: callback(Result.failure(FlutterError("launch_failed", "Cannot launch Bluetooth enable intent", null)))
     }
 
-    override fun disableBluetooth(callback: (Result<Unit>) -> Unit) {
+    override fun disableBluetooth(callback: (Result<Boolean>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
             callback(Result.failure(FlutterError("bluetooth_unavailable", "Bluetooth adapter not available", null)))
             return
         }
         if (!adapter.isEnabled) {
-            callback(Result.success(Unit))
+            callback(Result.success(true))
             return
         }
 
         try {
             val success = adapter.disable()
             if (success) {
-                callback(Result.success(Unit))
+                callback(Result.success(true))
             } else {
                 callback(Result.failure(FlutterError("disable_failed", "Failed to disable Bluetooth", null)))
             }
@@ -480,21 +620,18 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     @SuppressLint("MissingPermission")
-    override fun startScan(
-        filters: List<UniversalScanFilter>,
-        androidOptions: AndroidOptions,
-        callback: (Result<Unit>) -> Unit
-    ) {
+    override fun startScan(filter: UniversalScanFilter?, config: UniversalScanConfig?) {
         val ctx = context
         val adapter = bluetoothAdapter
         if (ctx == null || adapter == null) {
-            callback(Result.failure(FlutterError("no_context", "Context or Bluetooth adapter unavailable", null)))
+            handler.post {
+                PrinterConnectLogger.logError("Context or Bluetooth adapter unavailable")
+            }
             return
         }
 
         if (!adapter.isEnabled) {
             PrinterConnectLogger.logWarning("Bluetooth is not enabled, cannot start scan")
-            callback(Result.failure(FlutterError("bluetooth_off", "Bluetooth is not enabled", null)))
             return
         }
 
@@ -502,24 +639,26 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             val waitTime = SafeScanner.getInstance().getTimeUntilNextScanMs()
             PrinterConnectLogger.logWarning("Scan frequency limit reached. Waiting ${waitTime}ms")
             handler.postDelayed({
-                startScan(filters, androidOptions, callback)
+                startScan(filter, config)
             }, waitTime)
             return
         }
 
         SafeScanner.getInstance().recordScanStart()
-        pendingScanFilters = filters
+        pendingScanFilter = filter
+        pendingScanConfig = config
 
         val scanner = adapter.bluetoothLeScanner
         if (scanner == null) {
             PrinterConnectLogger.logError("Cannot get BluetoothLeScanner")
-            pendingScanFilters = null
-            callback(Result.failure(FlutterError("scanner_unavailable", "BluetoothLeScanner unavailable", null)))
+            pendingScanFilter = null
+            pendingScanConfig = null
             return
         }
 
+        val androidOptions = config?.android
         val scanSettings = buildScanSettings(androidOptions)
-        val scanFilters = buildScanFilters(filters)
+        val scanFilters = buildScanFilters(listOfNotNull(filter))
 
         scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -535,9 +674,6 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             override fun onScanFailed(errorCode: Int) {
                 PrinterConnectLogger.logError("Scan failed with error code: $errorCode")
                 isScanning = false
-                handler.post {
-                    callback(Result.failure(FlutterError("scan_failed", "Scan failed with error code: $errorCode", errorCode)))
-                }
             }
         }
 
@@ -549,37 +685,41 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             }
             isScanning = true
             PrinterConnectLogger.logInfo("Scan started with ${scanFilters.size} filters")
-            callback(Result.success(Unit))
         } catch (e: SecurityException) {
             PrinterConnectLogger.logError("SecurityException starting scan: ${e.message}")
             isScanning = false
-            callback(Result.failure(FlutterError("security_error", e.message ?: "Security exception", null)))
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error starting scan: ${e.message}")
             isScanning = false
-            callback(Result.failure(FlutterError("scan_error", e.message ?: "Unknown error", null)))
         }
     }
 
     @SuppressLint("MissingPermission")
     private fun handleScanResult(result: ScanResult) {
-        val filters = pendingScanFilters
-        if (!PrinterConnectFilterUtil.filterDevice(result, filters)) {
+        val filter = pendingScanFilter
+        if (!PrinterConnectFilterUtil.filterDevice(result, filter)) {
             return
         }
 
         val device = result.device
         val address = device.address
         val name = device.name
+        val isPaired = try {
+            device.isBonded()
+        } catch (_: Exception) {
+            false
+        }
+        val timestamp = System.currentTimeMillis()
 
         val scanResult = UniversalBleScanResult(
-            peripheralId = address,
+            deviceId = address,
             name = name,
+            isPaired = isPaired,
             rssi = result.rssi.toLong(),
-            manufacturerData = result.manufacturerDataList(),
+            manufacturerDataList = result.manufacturerDataList(),
             serviceData = result.serviceData(),
-            serviceUuids = result.serviceUuids(),
-            txPowerLevel = result.scanRecord?.txPowerLevel?.toLong()
+            services = result.serviceUuids(),
+            timestamp = timestamp
         )
 
         scanResults[address] = scanResult
@@ -587,42 +727,67 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         PrinterConnectLogger.logVerbose("Scan result: $address, rssi=${result.rssi}")
     }
 
-    private fun buildScanSettings(options: AndroidOptions): ScanSettings {
+    private fun buildScanSettings(options: AndroidOptions?): ScanSettings {
         val builder = ScanSettings.Builder()
 
-        options.scanMode?.let { mode ->
+        options?.scanMode?.let { mode ->
             val scanMode = when (mode) {
-                AndroidScanMode.LOW_POWERED -> ScanSettings.SCAN_MODE_LOW_POWER
+                AndroidScanMode.LOW_POWER -> ScanSettings.SCAN_MODE_LOW_POWER
                 AndroidScanMode.BALANCED -> ScanSettings.SCAN_MODE_BALANCED
                 AndroidScanMode.LOW_LATENCY -> ScanSettings.SCAN_MODE_LOW_LATENCY
+                AndroidScanMode.OPPORTUNISTIC -> ScanSettings.SCAN_MODE_OPPORTUNISTIC
             }
             builder.setScanMode(scanMode)
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            options.callbackType?.let { type ->
-                val callbackType = when (type) {
-                    AndroidScanCallbackType.DEFAULT_ -> ScanSettings.CALLBACK_TYPE_DEFAULT
-                    AndroidScanCallbackType.FIRST_MATCH -> ScanSettings.CALLBACK_TYPE_FIRST_MATCH
-                    AndroidScanCallbackType.LOSE -> ScanSettings.CALLBACK_TYPE_MATCH_LOST
-                    AndroidScanCallbackType.MATCHED -> ScanSettings.CALLBACK_TYPE_MATCHED
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            options?.reportDelayMillis?.let { delay ->
+                builder.setReportDelay(delay)
+            }
+            val legacy = options?.legacy
+            if (legacy != null) {
+                if (legacy) {
+                    builder.setLegacy(true)
+                } else {
+                    builder.setPhy(android.bluetooth.le.ScanSettings.PHY_LE_ALL_SUPPORTED)
+                    builder.setLegacy(false)
                 }
-                builder.setCallbackType(callbackType)
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            options?.callbackType?.let { types ->
+                var combinedType = 0
+                for (type in types) {
+                    combinedType = combinedType or when (type) {
+                        AndroidScanCallbackType.ALL_MATCHES -> ScanSettings.CALLBACK_TYPE_ALL_MATCHES
+                        AndroidScanCallbackType.FIRST_MATCH -> ScanSettings.CALLBACK_TYPE_FIRST_MATCH
+                        AndroidScanCallbackType.MATCH_LOST -> ScanSettings.CALLBACK_TYPE_MATCH_LOST
+                        AndroidScanCallbackType.ALL_MATCHES_AUTO_BATCH -> {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                ScanSettings.CALLBACK_TYPE_ALL_MATCHES_AUTO_BATCH
+                            } else {
+                                ScanSettings.CALLBACK_TYPE_ALL_MATCHES
+                            }
+                        }
+                    }
+                }
+                builder.setCallbackType(combinedType)
             }
 
-            options.matchMode?.let { mode ->
+            options?.matchMode?.let { mode ->
                 val matchMode = when (mode) {
-                    AndroidScanMatchMode.DEFAULT_ -> ScanSettings.MATCH_MODE_AGGRESSIVE
+                    AndroidScanMatchMode.AGGRESSIVE -> ScanSettings.MATCH_MODE_AGGRESSIVE
                     AndroidScanMatchMode.STICKY -> ScanSettings.MATCH_MODE_STICKY
                 }
                 builder.setMatchMode(matchMode)
             }
 
-            options.numOfMatches?.let { num ->
+            options?.numOfMatches?.let { num ->
                 val numOfMatches = when (num) {
-                    AndroidScanNumOfMatches.ONE -> ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT
-                    AndroidScanNumOfMatches.FEW -> ScanSettings.MATCH_NUM_FEW_ADVERTISEMENT
-                    AndroidScanNumOfMatches.MANY -> ScanSettings.MATCH_NUM_MANY_ADVERTISEMENTS
+                    AndroidScanNumOfMatches.ONE -> 1
+                    AndroidScanNumOfMatches.FEW -> 2
+                    AndroidScanNumOfMatches.MAX -> 3
                 }
                 builder.setNumOfMatches(numOfMatches)
             }
@@ -632,7 +797,7 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     private fun buildScanFilters(filters: List<UniversalScanFilter>): List<android.bluetooth.le.ScanFilter> {
-        return filters.toScanFilters()
+        return PrinterConnectFilterUtil.run { filters.toScanFilters() }
     }
 
     @SuppressLint("MissingPermission")
@@ -650,154 +815,205 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
         isScanning = false
         scanCallback = null
-        pendingScanFilters = null
+        pendingScanFilter = null
+        pendingScanConfig = null
     }
 
-    override fun stopScan(callback: (Result<Unit>) -> Unit) {
+    override fun stopScan() {
         stopScanInternal()
-        callback(Result.success(Unit))
     }
 
-    override fun isScanning(callback: (Result<Boolean>) -> Unit) {
-        callback(Result.success(isScanning))
+    override fun isScanning(): Boolean {
+        return isScanning
     }
 
     @SuppressLint("MissingPermission")
     override fun connect(
-        peripheralId: String,
-        config: ConnectionPlatformConfig,
-        callback: (Result<Unit>) -> Unit
+        deviceId: String,
+        autoConnect: Boolean?,
+        platformConfig: ConnectionPlatformConfig?
     ) {
         val ctx = context
         if (ctx == null) {
-            callback(Result.failure(FlutterError("no_context", "Context unavailable", null)))
+            PrinterConnectLogger.logError("Context unavailable")
+            sendConnectionChanged(deviceId, false, "Context unavailable")
             return
         }
         val adapter = bluetoothAdapter
         if (adapter == null) {
-            callback(Result.failure(FlutterError("no_adapter", "Bluetooth adapter unavailable", null)))
+            PrinterConnectLogger.logError("Bluetooth adapter unavailable")
+            sendConnectionChanged(deviceId, false, "Bluetooth adapter unavailable")
             return
         }
 
+        if (connectingDevices.contains(deviceId)) {
+            PrinterConnectLogger.logDebug("Already connecting to $deviceId")
+            handler.post {
+                sendConnectionChanged(deviceId, false, null)
+            }
+            return
+        }
+
+        val existingGatt = gattServers[deviceId]
+        if (existingGatt != null) {
+            val state = try {
+                bluetoothManager?.getConnectionState(existingGatt.device, BluetoothProfile.GATT)
+                    ?: BluetoothProfile.STATE_DISCONNECTED
+            } catch (_: Exception) {
+                BluetoothProfile.STATE_DISCONNECTED
+            }
+            if (state == BluetoothProfile.STATE_CONNECTED || state == BluetoothProfile.STATE_CONNECTING) {
+                PrinterConnectLogger.logDebug("Already connected/connecting to $deviceId")
+                handler.post {
+                    sendConnectionChanged(deviceId, state == BluetoothProfile.STATE_CONNECTED, null)
+                }
+                return
+            }
+        }
+
         val device = try {
-            adapter.getRemoteDevice(peripheralId)
+            adapter.getRemoteDevice(deviceId)
         } catch (e: Exception) {
-            PrinterConnectLogger.logError("Invalid device address: $peripheralId")
-            callback(Result.failure(FlutterError("invalid_device", "Invalid device address: $peripheralId", null)))
+            PrinterConnectLogger.logError("Invalid device address: $deviceId")
+            sendConnectionChanged(deviceId, false, "Invalid device address: $deviceId")
             return
         }
 
         try {
+            val connectAuto = autoConnect ?: false
             val gatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                device.connectGatt(ctx, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                device.connectGatt(ctx, connectAuto, gattCallback, BluetoothDevice.TRANSPORT_LE)
             } else {
-                device.connectGatt(ctx, false, gattCallback)
+                device.connectGatt(ctx, connectAuto, gattCallback)
             }
             if (gatt != null) {
-                gattServers[peripheralId] = gatt
-                PrinterConnectLogger.logInfo("Connecting to $peripheralId")
-                callback(Result.success(Unit))
+                gattServers[deviceId] = gatt
+                connectingDevices.add(deviceId)
+                PrinterConnectLogger.logInfo("Connecting to $deviceId (autoConnect=$connectAuto)")
             } else {
-                PrinterConnectLogger.logError("Failed to create GATT connection to $peripheralId")
-                callback(Result.failure(FlutterError("connect_failed", "Failed to create GATT connection", null)))
+                PrinterConnectLogger.logError("Failed to create GATT connection to $deviceId")
+                sendConnectionChanged(deviceId, false, "Failed to create GATT connection")
             }
         } catch (e: SecurityException) {
-            PrinterConnectLogger.logError("SecurityException connecting to $peripheralId: ${e.message}")
-            callback(Result.failure(FlutterError("security_error", e.message ?: "Security exception", null)))
+            PrinterConnectLogger.logError("SecurityException connecting to $deviceId: ${e.message}")
+            sendConnectionChanged(deviceId, false, e.message ?: "Security exception")
         } catch (e: Exception) {
-            PrinterConnectLogger.logError("Error connecting to $peripheralId: ${e.message}")
-            callback(Result.failure(FlutterError("connect_error", e.message ?: "Unknown error", null)))
+            PrinterConnectLogger.logError("Error connecting to $deviceId: ${e.message}")
+            sendConnectionChanged(deviceId, false, e.message ?: "Unknown error")
         }
     }
 
     @SuppressLint("MissingPermission")
-    override fun disconnect(peripheralId: String, callback: (Result<Unit>) -> Unit) {
-        val gatt = gattServers[peripheralId]
+    override fun disconnect(deviceId: String) {
+        connectingDevices.remove(deviceId)
+        val gatt = gattServers[deviceId]
         if (gatt != null) {
             try {
                 gatt.disconnect()
-                PrinterConnectLogger.logInfo("Disconnecting from $peripheralId")
+                PrinterConnectLogger.logInfo("Disconnecting from $deviceId")
             } catch (e: Exception) {
-                PrinterConnectLogger.logError("Error disconnecting from $peripheralId: ${e.message}")
+                PrinterConnectLogger.logError("Error disconnecting from $deviceId: ${e.message}")
             }
         } else {
-            PrinterConnectLogger.logWarning("No GATT connection found for $peripheralId")
+            PrinterConnectLogger.logWarning("No GATT connection found for $deviceId")
+            cleanUpConnection(deviceId)
+            handler.post {
+                sendConnectionChanged(deviceId, false, null)
+            }
         }
-        callback(Result.success(Unit))
     }
 
     @SuppressLint("MissingPermission")
     override fun discoverServices(
-        peripheralId: String,
+        deviceId: String,
+        withDescriptors: Boolean,
         callback: (Result<List<UniversalBleService>>) -> Unit
     ) {
-        val gatt = gattServers[peripheralId]
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
             return
         }
 
-        cachedServices[peripheralId]?.let { services ->
+        cachedServices[deviceId]?.let { services ->
             callback(Result.success(services))
             return
         }
 
         try {
-            discoverFutures[peripheralId] = callback
-            val success = gatt.discoverServices()
-            if (!success) {
-                discoverFutures.remove(peripheralId)
-                callback(Result.failure(FlutterError("discover_failed", "Failed to discover services", "")))
-                return
+            val pendingList = discoverFutures.getOrPut(deviceId) { mutableListOf() }
+            pendingList.add(callback)
+
+            if (pendingList.size == 1) {
+                val success = gatt.discoverServices()
+                if (!success) {
+                    discoverFutures.remove(deviceId)
+                    callback(Result.failure(FlutterError("discover_failed", "Failed to discover services", "")))
+                    return
+                }
             }
         } catch (e: Exception) {
-            discoverFutures.remove(peripheralId)
+            discoverFutures.remove(deviceId)
             callback(Result.failure(FlutterError("discover_error", e.message ?: "Unknown error", "")))
         }
     }
 
     @SuppressLint("MissingPermission")
     override fun setNotifiable(
-        peripheralId: String,
-        serviceId: String,
-        characteristicId: String,
-        value: BleInputProperty,
+        deviceId: String,
+        service: String,
+        characteristic: String,
+        bleInputProperty: BleInputProperty,
         callback: (Result<Unit>) -> Unit
     ) {
-        val gatt = gattServers[peripheralId]
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
             return
         }
 
-        val characteristic = gatt.getCharacteristic(serviceId, characteristicId)
-        if (characteristic == null) {
-            callback(Result.failure(FlutterError("no_characteristic", "Characteristic not found: $characteristicId", "")))
+        val gattCharacteristic = gatt.getCharacteristic(service, characteristic)
+        if (gattCharacteristic == null) {
+            callback(Result.failure(FlutterError("no_characteristic", "Characteristic not found: $characteristic", "")))
             return
         }
 
         try {
-            val enable = when (value) {
+            val enable = when (bleInputProperty) {
                 BleInputProperty.NOTIFICATION -> true
                 BleInputProperty.INDICATION -> true
                 BleInputProperty.DISABLED -> false
             }
 
-            val success = gatt.setCharacteristicNotification(characteristic, enable)
-            if (success && enable) {
-                val descriptor = characteristic.getDescriptor(ccdCharacteristic)
+            val success = gatt.setCharacteristicNotification(gattCharacteristic, enable)
+            if (!enable) {
+                if (success) {
+                    callback(Result.success(Unit))
+                } else {
+                    callback(Result.failure(FlutterError("set_notifiable_failed", "Failed to set notification", "")))
+                }
+                return
+            }
+
+            if (success) {
+                val descriptor = gattCharacteristic.getDescriptor(ccdCharacteristic)
                 if (descriptor != null) {
-                    val ccdValue = if (value == BleInputProperty.INDICATION) {
+                    val ccdValue = if (bleInputProperty == BleInputProperty.INDICATION) {
                         BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
                     } else {
                         BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
                     }
                     descriptor.value = ccdValue
+                    val descKey = "$deviceId/${descriptor.uuid}"
+                    descriptorWriteFutures[descKey] = callback
                     gatt.writeDescriptor(descriptor)
+                } else {
+                    callback(Result.success(Unit))
                 }
+            } else {
+                callback(Result.failure(FlutterError("set_notifiable_failed", "Failed to set notification", "")))
             }
-            PrinterConnectLogger.logDebug("Set notifiable for $characteristicId: enable=$enable")
-            callback(Result.success(Unit))
+            PrinterConnectLogger.logDebug("Set notifiable for $characteristic: enable=$enable")
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error setting notifiable: ${e.message}")
             callback(Result.failure(FlutterError("set_notifiable_error", e.message ?: "Unknown error", "")))
@@ -806,27 +1022,27 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
     @SuppressLint("MissingPermission")
     override fun readValue(
-        peripheralId: String,
-        serviceId: String,
-        characteristicId: String,
-        callback: (Result<UniversalBleCharacteristic>) -> Unit
+        deviceId: String,
+        service: String,
+        characteristic: String,
+        callback: (Result<ByteArray>) -> Unit
     ) {
-        val gatt = gattServers[peripheralId]
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
             return
         }
 
-        val characteristic = gatt.getCharacteristic(serviceId, characteristicId)
-        if (characteristic == null) {
-            callback(Result.failure(FlutterError("no_characteristic", "Characteristic not found: $characteristicId", "")))
+        val gattCharacteristic = gatt.getCharacteristic(service, characteristic)
+        if (gattCharacteristic == null) {
+            callback(Result.failure(FlutterError("no_characteristic", "Characteristic not found: $characteristic", "")))
             return
         }
 
         try {
-            val key = "$peripheralId/$serviceId/$characteristicId"
+            val key = "$deviceId/$service/$characteristic"
             readFutures[key] = callback
-            gatt.readCharacteristic(characteristic)
+            gatt.readCharacteristic(gattCharacteristic)
         } catch (e: Exception) {
             callback(Result.failure(FlutterError("read_error", e.message ?: "Unknown error", "")))
         }
@@ -834,45 +1050,55 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
     @SuppressLint("MissingPermission")
     override fun writeValue(
-        peripheralId: String,
-        serviceId: String,
-        characteristicId: String,
-        value: List<Long>,
+        deviceId: String,
+        service: String,
+        characteristic: String,
+        value: ByteArray,
         bleOutputProperty: BleOutputProperty,
         callback: (Result<Unit>) -> Unit
     ) {
-        val gatt = gattServers[peripheralId]
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
             return
         }
 
-        val characteristic = gatt.getCharacteristic(serviceId, characteristicId)
-        if (characteristic == null) {
-            callback(Result.failure(FlutterError("no_characteristic", "Characteristic not found: $characteristicId", "")))
+        val gattCharacteristic = gatt.getCharacteristic(service, characteristic)
+        if (gattCharacteristic == null) {
+            callback(Result.failure(FlutterError("no_characteristic", "Characteristic not found: $characteristic", "")))
             return
         }
 
         try {
-            val valueBytes = value.map { it.toInt().toByte() }.toByteArray()
-            characteristic.value = valueBytes
+            gattCharacteristic.value = value
 
             val writeType = when (bleOutputProperty) {
-                BleOutputProperty.WRITE_WITHOUT_RESPONSE -> BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
-                BleOutputProperty.WRITE -> BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                BleOutputProperty.NONE -> BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                BleOutputProperty.WITH_RESPONSE -> BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                BleOutputProperty.WITHOUT_RESPONSE -> BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
             }
 
-            characteristic.writeType = writeType
-            val key = "$peripheralId/$serviceId/$characteristicId"
-            writeFutures[key] = callback
-            gatt.writeCharacteristic(characteristic)
-            PrinterConnectLogger.logDebug("Written ${value.size} bytes to $characteristicId")
+            gattCharacteristic.writeType = writeType
+            val key = "$deviceId/$service/$characteristic"
 
             if (writeType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) {
-                writeFutures.remove(key)
-                callback(Result.success(Unit))
+                val success = gatt.writeCharacteristic(gattCharacteristic)
+                if (success) {
+                    callback(Result.success(Unit))
+                } else {
+                    callback(Result.failure(FlutterError("write_failed", "Write failed (no response)", "")))
+                }
+                PrinterConnectLogger.logDebug("Written ${value.size} bytes to $characteristic (no response, success=$success)")
+                return
             }
+
+            writeFutures[key] = callback
+            val success = gatt.writeCharacteristic(gattCharacteristic)
+            if (!success) {
+                writeFutures.remove(key)
+                callback(Result.failure(FlutterError("write_failed", "Write failed", "")))
+                return
+            }
+            PrinterConnectLogger.logDebug("Written ${value.size} bytes to $characteristic")
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error writing value: ${e.message}")
             callback(Result.failure(FlutterError("write_error", e.message ?: "Unknown error", "")))
@@ -880,53 +1106,59 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     @SuppressLint("MissingPermission")
-    override fun requestMtu(peripheralId: String, mtu: Long, callback: (Result<Long>) -> Unit) {
-        val gatt = gattServers[peripheralId]
+    override fun requestMtu(deviceId: String, expectedMtu: Long, callback: (Result<Long>) -> Unit) {
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
             return
         }
 
         try {
-            mtuFutures[peripheralId] = callback
-            val success = gatt.requestMtu(mtu.toInt())
+            mtuFutures[deviceId] = callback
+            val success = gatt.requestMtu(expectedMtu.toInt())
             if (!success) {
-                mtuFutures.remove(peripheralId)
+                mtuFutures.remove(deviceId)
                 callback(Result.failure(FlutterError("mtu_request_failed", "MTU request failed", "")))
                 return
             }
         } catch (e: Exception) {
-            mtuFutures.remove(peripheralId)
+            mtuFutures.remove(deviceId)
             callback(Result.failure(FlutterError("mtu_error", e.message ?: "Unknown error", "")))
         }
     }
 
     @SuppressLint("MissingPermission")
-    override fun readRssi(peripheralId: String, callback: (Result<Long>) -> Unit) {
-        val gatt = gattServers[peripheralId]
+    override fun readRssi(deviceId: String, callback: (Result<Long>) -> Unit) {
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
             return
         }
 
         try {
-            rssiFutures[peripheralId] = callback
+            rssiFutures[deviceId] = callback
             gatt.readRemoteRssi()
         } catch (e: Exception) {
-            rssiFutures.remove(peripheralId)
+            rssiFutures.remove(deviceId)
             callback(Result.failure(FlutterError("rssi_error", e.message ?: "Unknown error", "")))
         }
     }
 
     @SuppressLint("MissingPermission")
     override fun requestConnectionPriority(
-        peripheralId: String,
+        deviceId: String,
         priority: BleConnectionPriority,
         callback: (Result<Unit>) -> Unit
     ) {
-        val gatt = gattServers[peripheralId]
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $peripheralId", "")))
+            callback(Result.failure(FlutterError("no_connection", "No GATT connection for $deviceId", "")))
+            return
+        }
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            PrinterConnectLogger.logWarning("requestConnectionPriority requires API 23+")
+            callback(Result.failure(FlutterError("not_supported", "requestConnectionPriority requires API 23+", "")))
             return
         }
 
@@ -937,7 +1169,7 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
                 BleConnectionPriority.LOW_POWER -> BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER
             }
             gatt.requestConnectionPriority(connectionPriority)
-            PrinterConnectLogger.logDebug("Requested connection priority for $peripheralId: $priority")
+            PrinterConnectLogger.logDebug("Requested connection priority for $deviceId: $priority")
             callback(Result.success(Unit))
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error requesting connection priority: ${e.message}")
@@ -945,14 +1177,14 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         }
     }
 
-    override fun isPaired(peripheralId: String, callback: (Result<Boolean>) -> Unit) {
+    override fun isPaired(deviceId: String, callback: (Result<Boolean>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
             callback(Result.success(false))
             return
         }
         return try {
-            val device = adapter.getRemoteDevice(peripheralId)
+            val device = adapter.getRemoteDevice(deviceId)
             callback(Result.success(device.isBonded()))
         } catch (e: Exception) {
             callback(Result.success(false))
@@ -960,7 +1192,7 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     @SuppressLint("MissingPermission")
-    override fun pair(peripheralId: String, callback: (Result<Unit>) -> Unit) {
+    override fun pair(deviceId: String, callback: (Result<Boolean>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
             callback(Result.failure(FlutterError("no_adapter", "Bluetooth adapter unavailable", null)))
@@ -968,47 +1200,53 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         }
 
         try {
-            val device = adapter.getRemoteDevice(peripheralId)
+            val device = adapter.getRemoteDevice(deviceId)
             if (device.isBonded()) {
-                callback(Result.success(Unit))
+                callback(Result.success(true))
                 return
             }
 
+            val bondState = device.bondState
+            if (bondState == BluetoothDevice.BOND_BONDING) {
+                PrinterConnectLogger.logDebug("Already bonding to $deviceId, waiting for state change")
+                pendingPairResults[deviceId] = callback
+                return
+            }
+
+            pendingPairResults[deviceId] = callback
+            bondingDevices.add(deviceId)
             device.createBond()
-            PrinterConnectLogger.logInfo("Pairing with $peripheralId")
-            callback(Result.success(Unit))
+            PrinterConnectLogger.logInfo("Pairing with $deviceId")
         } catch (e: Exception) {
+            pendingPairResults.remove(deviceId)
+            bondingDevices.remove(deviceId)
             PrinterConnectLogger.logError("Error pairing: ${e.message}")
             callback(Result.failure(FlutterError("pair_error", e.message ?: "Unknown error", null)))
         }
     }
 
     @SuppressLint("MissingPermission")
-    override fun unPair(peripheralId: String, callback: (Result<Unit>) -> Unit) {
+    override fun unPair(deviceId: String) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
-            callback(Result.failure(FlutterError("no_adapter", "Bluetooth adapter unavailable", null)))
             return
         }
 
         try {
-            val device = adapter.getRemoteDevice(peripheralId)
+            val device = adapter.getRemoteDevice(deviceId)
             if (!device.isBonded()) {
-                callback(Result.success(Unit))
                 return
             }
 
             device.removeBond()
-            PrinterConnectLogger.logInfo("Unpairing from $peripheralId")
-            callback(Result.success(Unit))
+            PrinterConnectLogger.logInfo("Unpairing from $deviceId")
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error unpairing: ${e.message}")
-            callback(Result.failure(FlutterError("unpair_error", e.message ?: "Unknown error", null)))
         }
     }
 
     @SuppressLint("MissingPermission")
-    override fun getSystemDevices(withServices: List<String>?, callback: (Result<List<UniversalBleScanResult>>) -> Unit) {
+    override fun getSystemDevices(withServices: List<String>, callback: (Result<List<UniversalBleScanResult>>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
             callback(Result.success(emptyList()))
@@ -1023,7 +1261,8 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
         val connectedDevices = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                adapter.getConnectedDevices(BluetoothProfile.GATT)
+                bluetoothManager?.getConnectedDevices(BluetoothProfile.GATT)
+                    ?: emptyList<BluetoothDevice>()
             } else {
                 @Suppress("DEPRECATION")
                 adapter.bondedDevices.toList()
@@ -1033,37 +1272,58 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             emptyList<BluetoothDevice>()
         }
 
-        val results = connectedDevices.map { device ->
+        val results = connectedDevices.mapNotNull { device ->
+            val deviceServices = getDeviceServiceUuids(device)
+            val matchesFilter = withServices.isEmpty() || deviceServices.containsAll(withServices)
+
+            if (!matchesFilter) return@mapNotNull null
+
             UniversalBleScanResult(
-                peripheralId = device.address,
+                deviceId = device.address,
                 name = device.name,
+                isPaired = device.isBonded(),
                 rssi = 0L,
-                manufacturerData = null,
+                manufacturerDataList = null,
                 serviceData = null,
-                serviceUuids = withServices,
-                txPowerLevel = null
+                services = deviceServices,
+                timestamp = System.currentTimeMillis()
             )
         }
         callback(Result.success(results))
     }
 
-    override fun getConnectionState(peripheralId: String, callback: (Result<BleConnectionState>) -> Unit) {
-        val gatt = gattServers[peripheralId]
+    @SuppressLint("MissingPermission")
+    private fun getDeviceServiceUuids(device: BluetoothDevice): List<String> {
+        val gatt = gattServers[device.address]
+        if (gatt != null) {
+            return try {
+                gatt.services.map { it.uuid.toString() }
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+        return cachedServices[device.address]?.map { it.uuid } ?: emptyList()
+    }
+
+    override fun getConnectionState(deviceId: String): BleConnectionState {
+        if (connectingDevices.contains(deviceId)) {
+            return BleConnectionState.CONNECTING
+        }
+        val gatt = gattServers[deviceId]
         if (gatt == null) {
-            callback(Result.success(BleConnectionState.DISCONNECTED))
-            return
+            return BleConnectionState.DISCONNECTED
         }
         return try {
-            val state = gatt.device.getProfileConnectionState(BluetoothProfile.GATT)
-            callback(Result.success(state.toBleConnectionState()))
+            val state = bluetoothManager?.getConnectionState(gatt.device, BluetoothProfile.GATT)
+                ?: BluetoothProfile.STATE_DISCONNECTED
+            state.toBleConnectionState()
         } catch (e: Exception) {
-            callback(Result.success(BleConnectionState.DISCONNECTED))
+            BleConnectionState.DISCONNECTED
         }
     }
 
-    override fun setLogLevel(level: BleLogLevel, callback: (Result<Unit>) -> Unit) {
-        PrinterConnectLogger.setLogLevel(level)
-        callback(Result.success(Unit))
+    override fun setLogLevel(logLevel: BleLogLevel) {
+        PrinterConnectLogger.setLogLevel(logLevel)
     }
 
     companion object {

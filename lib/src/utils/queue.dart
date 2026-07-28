@@ -29,6 +29,10 @@ class Queue<T> {
 
   void _tryProcess() {
     if (_isProcessing) return;
+    if (_items.isEmpty && _nextCycleItems.isNotEmpty) {
+      _items.addAll(_nextCycleItems);
+      _nextCycleItems.clear();
+    }
     if (_items.isEmpty) {
       _onRemainingItemsUpdate();
       return;
@@ -61,21 +65,27 @@ class Queue<T> {
     _items.clear();
   }
 
+  void _completeItemsWithError(List<_QueueItem<T>> items) {
+    for (final item in items) {
+      if (!item.completer.isCompleted) {
+        item.completer.completeError(
+          StateError('Queue has been disposed'),
+        );
+      }
+    }
+  }
+
+  void clear() {
+    _completeItemsWithError(_items);
+    _completeItemsWithError(_nextCycleItems);
+    _items.clear();
+    _nextCycleItems.clear();
+    _isProcessing = false;
+  }
+
   void dispose() {
-    for (final item in _items) {
-      if (!item.completer.isCompleted) {
-        item.completer.completeError(
-          StateError('Queue has been disposed'),
-        );
-      }
-    }
-    for (final item in _nextCycleItems) {
-      if (!item.completer.isCompleted) {
-        item.completer.completeError(
-          StateError('Queue has been disposed'),
-        );
-      }
-    }
+    _completeItemsWithError(_items);
+    _completeItemsWithError(_nextCycleItems);
     _items.clear();
     _nextCycleItems.clear();
     _isProcessing = false;

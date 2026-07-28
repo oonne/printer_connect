@@ -15,8 +15,11 @@ import 'package:printer_connect/src/printer_connect.g.dart' as pigeon
         AndroidOptions,
         AppleConnectionOptions,
         ConnectionPlatformConfig,
-        BleConnectionParametersUpdated;
+        BleConnectionParametersUpdated,
+        CharacteristicProperty;
 import 'package:printer_connect/src/models/model_exports.dart';
+import 'package:printer_connect/src/utils/cache_handler.dart';
+import 'package:printer_connect/src/utils/universal_logger.dart';
 
 abstract class PrinterConnectPlatform extends PlatformInterface {
   PrinterConnectPlatform() : super(token: _token);
@@ -51,29 +54,33 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
       _connectionParametersStreamController =
       StreamController<_ConnectionParametersEvent>.broadcast();
 
+  final Map<String, pigeon.BleConnectionParametersUpdated> _lastParams = {};
+
+  final Map<String, BleConnectionState> _connectionStateCache = {};
+
   Stream<BleDevice> get scanStream => _scanStreamController.stream;
 
   Stream<AvailabilityState> get availabilityStream =>
       _availabilityStreamController.stream;
 
-  Stream<BleConnectionState> connectionStream(String deviceId) {
+  Stream<bool> connectionStream(String deviceId) {
     return _connectionStreamController.stream
-        .where((event) => event.deviceId == deviceId)
-        .map((event) => event.state);
+        .where((event) => event.deviceId.toLowerCase() == deviceId.toLowerCase())
+        .map((event) => event.isConnected);
   }
 
   Stream<Uint8List> characteristicValueStream(
       String deviceId, String characteristicId) {
     return _valueStreamController.stream
         .where((event) =>
-            event.deviceId == deviceId &&
+            event.deviceId.toLowerCase() == deviceId.toLowerCase() &&
             event.characteristic == characteristicId)
         .map((event) => event.value);
   }
 
   Stream<bool> pairingStateStream(String deviceId) {
     return _pairingStateStreamController.stream
-        .where((event) => event.deviceId == deviceId)
+        .where((event) => event.deviceId.toLowerCase() == deviceId.toLowerCase())
         .map((event) => event.isPaired);
   }
 
@@ -81,15 +88,24 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
     _scanStreamController.add(device);
   }
 
-  void updateConnection(String deviceId, BleConnectionState state) {
+  void updateConnection(String deviceId, bool isConnected, [String? error]) {
+    final state = isConnected
+        ? BleConnectionState.connected
+        : BleConnectionState.disconnected;
+    _connectionStateCache[deviceId.toLowerCase()] = state;
     _connectionStreamController
-        .add(_ConnectionChangeEvent(deviceId, state));
+        .add(_ConnectionChangeEvent(deviceId, isConnected));
+    if (error != null) {
+      UniversalLogger.logW(
+          'Connection error for $deviceId: $error');
+    }
   }
 
   void updateCharacteristicValue(
-      String deviceId, String service, String characteristic, Uint8List value) {
-    _valueStreamController
-        .add(_ValueChangeEvent(deviceId, service, characteristic, value));
+      String deviceId, String characteristic, Uint8List value,
+      {int? timestamp, String? service}) {
+    _valueStreamController.add(
+        _ValueChangeEvent(deviceId, service ?? '', characteristic, value));
   }
 
   void updateAvailability(AvailabilityState state) {
@@ -103,6 +119,16 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
 
   void updateConnectionParameters(
       String deviceId, pigeon.BleConnectionParametersUpdated params) {
+    final key = deviceId.toLowerCase();
+    final last = _lastParams[key];
+    if (last != null &&
+        last.interval == params.interval &&
+        last.latency == params.latency &&
+        last.supervisionTimeout == params.supervisionTimeout &&
+        last.status == params.status) {
+      return;
+    }
+    _lastParams[key] = params;
     _connectionParametersStreamController
         .add(_ConnectionParametersEvent(deviceId, params));
   }
@@ -125,9 +151,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   Future<bool> isScanning();
 
   Future<void> connect(String deviceId,
-      {Duration? connectionTimeout,
-      bool autoConnect,
-      ConnectionPlatformConfig? platformConfig});
+      {bool? autoConnect, ConnectionPlatformConfig? platformConfig});
 
   Future<void> disconnect(String deviceId);
 
@@ -138,7 +162,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
       String characteristic, BleInputProperty bleInputProperty);
 
   Future<Uint8List> readValue(String deviceId, String service,
-      String characteristic, {Duration? timeout});
+      String characteristic);
 
   Future<void> writeValue(String deviceId, String service,
       String characteristic, Uint8List value,
@@ -157,9 +181,9 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
 
   Future<void> unpair(String deviceId);
 
-  Future<BleConnectionState> getConnectionState(String deviceId);
+  BleConnectionState getConnectionState(String deviceId);
 
-  Future<List<BleDevice>> getSystemDevices(List<String>? withServices);
+  Future<List<BleDevice>> getSystemDevices(List<String> withServices);
 
   Future<void> setLogLevel(BleLogLevel logLevel);
 
@@ -168,8 +192,8 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
 
 class _ConnectionChangeEvent {
   final String deviceId;
-  final BleConnectionState state;
-  _ConnectionChangeEvent(this.deviceId, this.state);
+  final bool isConnected;
+  _ConnectionChangeEvent(this.deviceId, this.isConnected);
 }
 
 class _ValueChangeEvent {
@@ -211,46 +235,31 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
     return [
       UniversalScanFilter(
         withServices: filter.withServices,
+        withNamePrefix: filter.withNamePrefix,
         withManufacturerData: filter.withManufacturerData
             ?.map((m) => ManufacturerDataFilter(
-                  companyId: m.companyId,
-                  data: m.data.toList(),
-                  mask: m.mask?.toList(),
+                  companyIdentifier: m.companyId,
+                  payloadPrefix: m.payload,
+                  payloadMask: m.mask,
                 ))
-            .toList(),
-        withLocalName: filter.withLocalName,
-        withLocalNamePrefix: filter.withNamePrefix,
-        withDeviceId: filter.withDeviceId,
-        exclusionFilters: filter.exclusionFilters
-            ?.map((e) => _convertExclusionFilter(e))
-            .toList(),
+            .toList() ??
+        [],
       ),
     ];
-  }
-
-  UniversalScanFilter _convertExclusionFilter(ScanFilter filter) {
-    return UniversalScanFilter(
-      withServices: filter.withServices,
-      withLocalNamePrefix: filter.withNamePrefix,
-      withDeviceId: filter.withDeviceId,
-      withManufacturerData: filter.withManufacturerData
-          ?.map((m) => ManufacturerDataFilter(
-                companyId: m.companyId,
-                data: m.data.toList(),
-                mask: m.mask?.toList(),
-              ))
-          .toList(),
-    );
   }
 
   pigeon.AndroidOptions _convertAndroidOptions(PlatformConfig? config) {
     final androidConfig = config?.android;
     if (androidConfig == null) return pigeon.AndroidOptions();
+
     return pigeon.AndroidOptions(
+      requestLocationPermission: androidConfig.requestLocationPermission,
       scanMode: AndroidScanMode.values[androidConfig.scanMode],
-      callbackType: AndroidScanCallbackType.values[androidConfig.callbackType],
+      reportDelayMillis: androidConfig.reportDelayMillis,
+      callbackType: androidConfig.callbackType,
       matchMode: AndroidScanMatchMode.values[androidConfig.matchMode],
       numOfMatches: AndroidScanNumOfMatches.values[androidConfig.numOfMatches],
+      legacy: androidConfig.legacy,
     );
   }
 
@@ -261,7 +270,6 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
     if (apple == null) return pigeon.ConnectionPlatformConfig();
     return pigeon.ConnectionPlatformConfig(
       apple: pigeon.AppleConnectionOptions(
-        shouldRestoreState: apple.enableAutoReceiveData,
         notifyOnConnection: apple.notifyOnConnection,
         notifyOnDisconnection: apple.notifyOnDisconnection,
         notifyOnNotification: apple.notifyOnNotification,
@@ -275,42 +283,44 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   }
 
   @override
-  void onPairStateChange(String peripheralId, bool isPaired) {
-    updatePairingState(peripheralId, isPaired);
+  void onPairStateChange(String deviceId, bool isPaired, String? error) {
+    updatePairingState(deviceId, isPaired);
   }
 
   @override
   void onScanResult(UniversalBleScanResult result) {
     final device = BleDevice(
-      deviceId: result.peripheralId,
-      name: result.name ?? '',
+      deviceId: result.deviceId,
+      name: result.name,
       rssi: result.rssi,
-      manufacturerDataList: result.manufacturerData
+      manufacturerDataList: result.manufacturerDataList
               ?.map((m) => ManufacturerData(
-                    companyId: m.id,
-                    data: Uint8List.fromList(m.data),
+                    companyId: m.companyIdentifier,
+                    payload: Uint8List.fromList(m.data),
                   ))
               .toList() ??
           [],
-      services: result.serviceUuids ?? const [],
+      services: result.services ?? const [],
+      timestamp: result.timestamp,
     );
     updateScanResult(device);
   }
 
   @override
   void onValueChanged(
-    String peripheralId,
-    String serviceId,
+    String deviceId,
     String characteristicId,
-    List<int> value,
+    Uint8List value,
+    int? timestamp,
   ) {
     updateCharacteristicValue(
-        peripheralId, serviceId, characteristicId, Uint8List.fromList(value));
+        deviceId, characteristicId, value,
+        timestamp: timestamp);
   }
 
   @override
-  void onConnectionChanged(String peripheralId, BleConnectionState state) {
-    updateConnection(peripheralId, state);
+  void onConnectionChanged(String deviceId, bool connected, String? error) {
+    updateConnection(deviceId, connected, error);
   }
 
   @override
@@ -346,12 +356,12 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<bool> hasPermissions({bool withAndroidFineLocation = false}) async {
-    return _platformChannel.hasPermissions();
+    return _platformChannel.hasPermissions(withAndroidFineLocation);
   }
 
   @override
   Future<void> requestPermissions({bool withAndroidFineLocation = false}) async {
-    await _platformChannel.requestPermissions();
+    await _platformChannel.requestPermissions(withAndroidFineLocation);
   }
 
   @override
@@ -359,7 +369,9 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       {ScanFilter? scanFilter, PlatformConfig? platformConfig}) async {
     final filters = _convertScanFilters(scanFilter);
     final androidOptions = _convertAndroidOptions(platformConfig);
-    await _platformChannel.startScan(filters, androidOptions);
+    final config = UniversalScanConfig(android: androidOptions);
+    await _platformChannel.startScan(
+        filters.isNotEmpty ? filters.first : null, config);
   }
 
   @override
@@ -374,11 +386,11 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<void> connect(String deviceId,
-      {Duration? connectionTimeout,
-      bool autoConnect = false,
+      {bool? autoConnect,
       ConnectionPlatformConfig? platformConfig}) async {
     final config = _convertConnectionConfig(platformConfig);
-    await _platformChannel.connect(deviceId, config);
+    await _platformChannel.connect(deviceId,
+        autoConnect: autoConnect, platformConfig: config);
   }
 
   @override
@@ -389,10 +401,39 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   @override
   Future<List<BleService>> discoverServices(
       String deviceId, bool withDescriptors) async {
-    final services = await _platformChannel.discoverServices(deviceId);
-    return services
-        .map((s) => BleService(uuid: s.uuid))
-        .toList();
+    final cached = CacheHandler.instance.getServices(deviceId);
+    if (cached != null) {
+      return cached;
+    }
+
+    final services =
+        await _platformChannel.discoverServices(deviceId, withDescriptors);
+    final result = services.map((s) {
+      final characteristics = s.characteristics
+              ?.map((c) => BleCharacteristic.withMetaData(
+                    uuid: c.uuid,
+                    properties: c.properties
+                        .map((p) => _mapCharacteristicProperty(p))
+                        .toList(),
+                    descriptors: c.descriptors
+                        .map((d) => BleDescriptor(uuid: d.uuid))
+                        .toList(),
+                    deviceId: deviceId,
+                    serviceId: s.uuid,
+                  ))
+              .toList() ??
+          [];
+      final service = BleService(uuid: s.uuid, characteristics: characteristics);
+      return service;
+    }).toList();
+    CacheHandler.instance.saveServices(deviceId, result);
+    return result;
+  }
+
+  CharacteristicProperty _mapCharacteristicProperty(
+      pigeon.CharacteristicProperty p) {
+    final index = p.index;
+    return CharacteristicProperty.values[index];
   }
 
   @override
@@ -404,10 +445,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<Uint8List> readValue(String deviceId, String service,
-      String characteristic, {Duration? timeout}) async {
-    final result =
-        await _platformChannel.readValue(deviceId, service, characteristic);
-    return result.value != null ? Uint8List.fromList(result.value!) : Uint8List(0);
+      String characteristic) async {
+    return _platformChannel.readValue(deviceId, service, characteristic);
   }
 
   @override
@@ -415,7 +454,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       String characteristic, Uint8List value,
       BleOutputProperty bleOutputProperty) async {
     await _platformChannel.writeValue(
-        deviceId, service, characteristic, value.toList(), bleOutputProperty);
+        deviceId, service, characteristic, value, bleOutputProperty);
   }
 
   @override
@@ -455,17 +494,19 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   }
 
   @override
-  Future<BleConnectionState> getConnectionState(String deviceId) async {
-    return _platformChannel.getConnectionState(deviceId);
+  BleConnectionState getConnectionState(String deviceId) {
+    return _connectionStateCache[deviceId.toLowerCase()] ??
+        BleConnectionState.disconnected;
   }
 
   @override
-  Future<List<BleDevice>> getSystemDevices(List<String>? withServices) async {
-    final devices = await _platformChannel.getSystemDevices(withServices: withServices);
+  Future<List<BleDevice>> getSystemDevices(List<String> withServices) async {
+    final devices =
+        await _platformChannel.getSystemDevices(withServices);
     return devices
         .map((d) => BleDevice(
-              deviceId: d.peripheralId,
-              name: d.name ?? '',
+              deviceId: d.deviceId,
+              name: d.name,
               rssi: d.rssi,
             ))
         .toList();

@@ -1,28 +1,13 @@
+import 'ble_uuid_parser.dart';
+
 class BleService {
   final String uuid;
   final List<BleCharacteristic> characteristics;
 
-  const BleService({
-    required this.uuid,
+  BleService({
+    required String uuid,
     this.characteristics = const [],
-  });
-
-  factory BleService.fromJson(Map<String, dynamic> json) {
-    return BleService(
-      uuid: json['uuid'] as String,
-      characteristics: (json['characteristics'] as List<dynamic>?)
-              ?.map((e) => BleCharacteristic.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          [],
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'uuid': uuid,
-      'characteristics': characteristics.map((e) => e.toJson()).toList(),
-    };
-  }
+  }) : uuid = BleUuidParser.string(uuid);
 
   @override
   bool operator ==(Object other) =>
@@ -52,34 +37,23 @@ class BleCharacteristic {
   final String uuid;
   final List<CharacteristicProperty> properties;
   final List<BleDescriptor> descriptors;
+  final ({String deviceId, String serviceId})? metaData;
 
-  const BleCharacteristic({
-    required this.uuid,
+  BleCharacteristic({
+    required String uuid,
     this.properties = const [],
     this.descriptors = const [],
-  });
+    this.metaData,
+  }) : uuid = BleUuidParser.string(uuid);
 
-  factory BleCharacteristic.fromJson(Map<String, dynamic> json) {
-    return BleCharacteristic(
-      uuid: json['uuid'] as String,
-      properties: (json['properties'] as List<dynamic>?)
-              ?.map((e) => _parseCharacteristicProperty(e as String))
-              .toList() ??
-          [],
-      descriptors: (json['descriptors'] as List<dynamic>?)
-              ?.map((e) => BleDescriptor.fromJson(e as Map<String, dynamic>))
-              .toList() ??
-          [],
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'uuid': uuid,
-      'properties': properties.map((e) => e.name).toList(),
-      'descriptors': descriptors.map((e) => e.toJson()).toList(),
-    };
-  }
+  BleCharacteristic.withMetaData({
+    required String uuid,
+    this.properties = const [],
+    this.descriptors = const [],
+    required String deviceId,
+    required String serviceId,
+  })  : metaData = (deviceId: deviceId, serviceId: serviceId),
+        uuid = BleUuidParser.string(uuid);
 
   @override
   bool operator ==(Object other) =>
@@ -113,18 +87,6 @@ class BleDescriptor {
     required this.uuid,
   });
 
-  factory BleDescriptor.fromJson(Map<String, dynamic> json) {
-    return BleDescriptor(
-      uuid: json['uuid'] as String,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'uuid': uuid,
-    };
-  }
-
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -137,6 +99,10 @@ class BleDescriptor {
 
   @override
   String toString() => 'BleDescriptor(uuid: $uuid)';
+}
+
+CharacteristicProperty _propertyFromName(String name) {
+  return CharacteristicProperty.values.byName(name);
 }
 
 CharacteristicProperty _parseCharacteristicProperty(String value) {

@@ -34,8 +34,7 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
 
   @override
   Future<void> connect(String deviceId,
-      {Duration? connectionTimeout,
-      bool autoConnect = false,
+      {bool? autoConnect,
       ConnectionPlatformConfig? platformConfig}) async {}
 
   @override
@@ -51,7 +50,7 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
 
   @override
   Future<Uint8List> readValue(String deviceId, String service,
-      String characteristic, {Duration? timeout}) async => Uint8List(0);
+      String characteristic) async => Uint8List(0);
 
   @override
   Future<void> writeValue(String deviceId, String service,
@@ -78,12 +77,12 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
   Future<void> unpair(String deviceId) async {}
 
   @override
-  Future<BleConnectionState> getConnectionState(String deviceId) async =>
+  BleConnectionState getConnectionState(String deviceId) =>
       BleConnectionState.disconnected;
 
   @override
   Future<List<BleDevice>> getSystemDevices(
-      List<String>? withServices) async => [];
+      List<String> withServices) async => [];
 
   @override
   Future<void> setLogLevel(BleLogLevel logLevel) async {}
@@ -93,6 +92,8 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('default instance is PigeonPrinterConnectPlatform', () {
     final platform = PrinterConnectPlatform.instance;
     expect(platform, isInstanceOf<PigeonPrinterConnectPlatform>());

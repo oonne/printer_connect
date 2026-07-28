@@ -2,32 +2,39 @@ import 'dart:typed_data';
 
 class ManufacturerData {
   final int companyId;
-  final Uint8List data;
+  final Uint8List payload;
   final Uint8List? mask;
 
   const ManufacturerData({
     required this.companyId,
-    required this.data,
+    required this.payload,
     this.mask,
   });
 
-  factory ManufacturerData.fromJson(Map<String, dynamic> json) {
+  factory ManufacturerData.fromData(int companyId, Uint8List data,
+      [Uint8List? mask]) {
     return ManufacturerData(
-      companyId: json['companyId'] as int,
-      data: Uint8List.fromList((json['data'] as List<dynamic>).cast<int>()),
-      mask: json['mask'] != null
-          ? Uint8List.fromList((json['mask'] as List<dynamic>).cast<int>())
-          : null,
+      companyId: companyId,
+      payload: data,
+      mask: mask,
     );
   }
 
-  Map<String, dynamic> toJson() {
+  Uint8List toUint8List() => payload;
+
+  Map<String, dynamic> toUniversalManufacturerData() {
     return {
       'companyId': companyId,
-      'data': data,
+      'data': payload,
       'mask': mask,
     };
   }
+
+  String get companyIdRadix16 => companyId.toRadixString(16).padLeft(4, '0').toUpperCase();
+
+  String get payloadRadix16 =>
+      payload.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
+          .join();
 
   @override
   bool operator ==(Object other) =>
@@ -35,10 +42,10 @@ class ManufacturerData {
       other is ManufacturerData &&
           runtimeType == other.runtimeType &&
           companyId == other.companyId &&
-          _listEquals(data, other.data);
+          _listEquals(payload, other.payload);
 
   @override
-  int get hashCode => Object.hash(companyId, data);
+  int get hashCode => Object.hash(companyId, payload);
 
   bool _listEquals(Uint8List a, Uint8List b) {
     if (a.length != b.length) return false;
@@ -50,5 +57,5 @@ class ManufacturerData {
 
   @override
   String toString() =>
-      'ManufacturerData(companyId: $companyId, data: ${data.length} bytes)';
+      'ManufacturerData(companyId: $companyId, payload: ${payload.length} bytes)';
 }
