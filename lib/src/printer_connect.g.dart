@@ -547,6 +547,8 @@ class UniversalScanFilter {
     this.withManufacturerData,
     this.withLocalName,
     this.withLocalNamePrefix,
+    this.withDeviceId,
+    this.exclusionFilters,
   });
 
   List<String>? withServices;
@@ -555,7 +557,11 @@ class UniversalScanFilter {
 
   String? withLocalName;
 
-  String? withLocalNamePrefix;
+  List<String>? withLocalNamePrefix;
+
+  List<String>? withDeviceId;
+
+  List<UniversalScanFilter>? exclusionFilters;
 
   List<Object?> _toList() {
     return <Object?>[
@@ -563,6 +569,8 @@ class UniversalScanFilter {
       withManufacturerData,
       withLocalName,
       withLocalNamePrefix,
+      withDeviceId,
+      exclusionFilters,
     ];
   }
 
@@ -575,7 +583,9 @@ class UniversalScanFilter {
       withServices: (result[0] as List<Object?>?)?.cast<String>(),
       withManufacturerData: (result[1] as List<Object?>?)?.cast<ManufacturerDataFilter>(),
       withLocalName: result[2] as String?,
-      withLocalNamePrefix: result[3] as String?,
+      withLocalNamePrefix: (result[3] as List<Object?>?)?.cast<String>(),
+      withDeviceId: (result[4] as List<Object?>?)?.cast<String>(),
+      exclusionFilters: (result[5] as List<Object?>?)?.cast<UniversalScanFilter>(),
     );
   }
 
@@ -588,7 +598,7 @@ class UniversalScanFilter {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(withServices, other.withServices) && _deepEquals(withManufacturerData, other.withManufacturerData) && _deepEquals(withLocalName, other.withLocalName) && _deepEquals(withLocalNamePrefix, other.withLocalNamePrefix);
+    return _deepEquals(withServices, other.withServices) && _deepEquals(withManufacturerData, other.withManufacturerData) && _deepEquals(withLocalName, other.withLocalName) && _deepEquals(withLocalNamePrefix, other.withLocalNamePrefix) && _deepEquals(withDeviceId, other.withDeviceId) && _deepEquals(exclusionFilters, other.exclusionFilters);
   }
 
   @override
@@ -649,13 +659,25 @@ class ManufacturerDataFilter {
 class AppleConnectionOptions {
   AppleConnectionOptions({
     this.shouldRestoreState,
+    this.notifyOnConnection,
+    this.notifyOnDisconnection,
+    this.notifyOnNotification,
   });
 
   bool? shouldRestoreState;
 
+  bool? notifyOnConnection;
+
+  bool? notifyOnDisconnection;
+
+  bool? notifyOnNotification;
+
   List<Object?> _toList() {
     return <Object?>[
       shouldRestoreState,
+      notifyOnConnection,
+      notifyOnDisconnection,
+      notifyOnNotification,
     ];
   }
 
@@ -666,6 +688,9 @@ class AppleConnectionOptions {
     result as List<Object?>;
     return AppleConnectionOptions(
       shouldRestoreState: result[0] as bool?,
+      notifyOnConnection: result[1] as bool?,
+      notifyOnDisconnection: result[2] as bool?,
+      notifyOnNotification: result[3] as bool?,
     );
   }
 
@@ -678,7 +703,7 @@ class AppleConnectionOptions {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(shouldRestoreState, other.shouldRestoreState);
+    return _deepEquals(shouldRestoreState, other.shouldRestoreState) && _deepEquals(notifyOnConnection, other.notifyOnConnection) && _deepEquals(notifyOnDisconnection, other.notifyOnDisconnection) && _deepEquals(notifyOnNotification, other.notifyOnNotification);
   }
 
   @override
@@ -729,13 +754,33 @@ class ConnectionPlatformConfig {
 class BleConnectionParametersUpdated {
   BleConnectionParametersUpdated({
     required this.mtu,
+    required this.deviceId,
+    this.interval,
+    this.latency,
+    this.supervisionTimeout,
+    this.status,
   });
 
   int mtu;
 
+  String deviceId;
+
+  int? interval;
+
+  int? latency;
+
+  int? supervisionTimeout;
+
+  int? status;
+
   List<Object?> _toList() {
     return <Object?>[
       mtu,
+      deviceId,
+      interval,
+      latency,
+      supervisionTimeout,
+      status,
     ];
   }
 
@@ -746,6 +791,11 @@ class BleConnectionParametersUpdated {
     result as List<Object?>;
     return BleConnectionParametersUpdated(
       mtu: result[0]! as int,
+      deviceId: result[1]! as String,
+      interval: result[2] as int?,
+      latency: result[3] as int?,
+      supervisionTimeout: result[4] as int?,
+      status: result[5] as int?,
     );
   }
 
@@ -758,7 +808,7 @@ class BleConnectionParametersUpdated {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(mtu, other.mtu);
+    return _deepEquals(mtu, other.mtu) && _deepEquals(deviceId, other.deviceId) && _deepEquals(interval, other.interval) && _deepEquals(latency, other.latency) && _deepEquals(supervisionTimeout, other.supervisionTimeout) && _deepEquals(status, other.status);
   }
 
   @override
@@ -1259,14 +1309,14 @@ class UniversalBlePlatformChannel {
     ;
   }
 
-  Future<List<UniversalBleScanResult>> getSystemDevices() async {
+  Future<List<UniversalBleScanResult>> getSystemDevices({List<String>? withServices}) async {
     final pigeonVar_channelName = 'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.getSystemDevices$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,
       binaryMessenger: pigeonVar_binaryMessenger,
     );
-    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(<Object?>[withServices]);
     final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
 
     final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(

@@ -1,31 +1,39 @@
 class BleConnectionParametersUpdated {
-  final int minInterval;
-  final int maxInterval;
-  final int latency;
-  final int timeout;
+  final int mtu;
+  final String deviceId;
+  final int? interval;
+  final int? latency;
+  final int? supervisionTimeout;
+  final int? status;
 
   const BleConnectionParametersUpdated({
-    required this.minInterval,
-    required this.maxInterval,
-    required this.latency,
-    required this.timeout,
+    required this.mtu,
+    required this.deviceId,
+    this.interval,
+    this.latency,
+    this.supervisionTimeout,
+    this.status,
   });
 
   factory BleConnectionParametersUpdated.fromJson(Map<String, dynamic> json) {
     return BleConnectionParametersUpdated(
-      minInterval: json['minInterval'] as int,
-      maxInterval: json['maxInterval'] as int,
-      latency: json['latency'] as int,
-      timeout: json['timeout'] as int,
+      mtu: json['mtu'] as int,
+      deviceId: json['deviceId'] as String,
+      interval: json['interval'] as int?,
+      latency: json['latency'] as int?,
+      supervisionTimeout: json['supervisionTimeout'] as int?,
+      status: json['status'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'minInterval': minInterval,
-      'maxInterval': maxInterval,
+      'mtu': mtu,
+      'deviceId': deviceId,
+      'interval': interval,
       'latency': latency,
-      'timeout': timeout,
+      'supervisionTimeout': supervisionTimeout,
+      'status': status,
     };
   }
 
@@ -34,15 +42,24 @@ class BleConnectionParametersUpdated {
       identical(this, other) ||
       other is BleConnectionParametersUpdated &&
           runtimeType == other.runtimeType &&
-          minInterval == other.minInterval &&
-          maxInterval == other.maxInterval &&
+          mtu == other.mtu &&
+          deviceId == other.deviceId &&
+          interval == other.interval &&
           latency == other.latency &&
-          timeout == other.timeout;
+          supervisionTimeout == other.supervisionTimeout &&
+          status == other.status;
 
   @override
-  int get hashCode => Object.hash(minInterval, maxInterval, latency, timeout);
+  int get hashCode => Object.hash(
+        mtu,
+        deviceId,
+        interval,
+        latency,
+        supervisionTimeout,
+        status,
+      );
 
   @override
   String toString() =>
-      'BleConnectionParametersUpdated(minInterval: $minInterval, maxInterval: $maxInterval, latency: $latency, timeout: $timeout)';
+      'BleConnectionParametersUpdated(mtu: $mtu, deviceId: $deviceId, interval: $interval, latency: $latency, supervisionTimeout: $supervisionTimeout, status: $status)';
 }

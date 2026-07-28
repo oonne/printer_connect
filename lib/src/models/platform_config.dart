@@ -125,10 +125,16 @@ class AndroidOptions {
 class AppleConnectionOptions {
   final bool enableAutoReceiveData;
   final int receiveDataTimeout;
+  final bool notifyOnConnection;
+  final bool notifyOnDisconnection;
+  final bool notifyOnNotification;
 
   const AppleConnectionOptions({
     this.enableAutoReceiveData = true,
     this.receiveDataTimeout = 0,
+    this.notifyOnConnection = true,
+    this.notifyOnDisconnection = true,
+    this.notifyOnNotification = false,
   });
 
   factory AppleConnectionOptions.fromJson(Map<String, dynamic> json) {
@@ -136,6 +142,9 @@ class AppleConnectionOptions {
       enableAutoReceiveData:
           json['enableAutoReceiveData'] as bool? ?? true,
       receiveDataTimeout: json['receiveDataTimeout'] as int? ?? 0,
+      notifyOnConnection: json['notifyOnConnection'] as bool? ?? true,
+      notifyOnDisconnection: json['notifyOnDisconnection'] as bool? ?? true,
+      notifyOnNotification: json['notifyOnNotification'] as bool? ?? false,
     );
   }
 
@@ -143,12 +152,15 @@ class AppleConnectionOptions {
     return {
       'enableAutoReceiveData': enableAutoReceiveData,
       'receiveDataTimeout': receiveDataTimeout,
+      'notifyOnConnection': notifyOnConnection,
+      'notifyOnDisconnection': notifyOnDisconnection,
+      'notifyOnNotification': notifyOnNotification,
     };
   }
 
   @override
   String toString() =>
-      'AppleConnectionOptions(enableAutoReceiveData: $enableAutoReceiveData, receiveDataTimeout: $receiveDataTimeout)';
+      'AppleConnectionOptions(enableAutoReceiveData: $enableAutoReceiveData, receiveDataTimeout: $receiveDataTimeout, notifyOnConnection: $notifyOnConnection, notifyOnDisconnection: $notifyOnDisconnection, notifyOnNotification: $notifyOnNotification)';
 }
 
 class ConnectionPlatformConfig {

@@ -161,12 +161,16 @@ class UniversalScanFilter {
     this.withManufacturerData,
     this.withLocalName,
     this.withLocalNamePrefix,
+    this.withDeviceId,
+    this.exclusionFilters,
   });
 
   List<String>? withServices;
   List<ManufacturerDataFilter>? withManufacturerData;
   String? withLocalName;
-  String? withLocalNamePrefix;
+  List<String>? withLocalNamePrefix;
+  List<String>? withDeviceId;
+  List<UniversalScanFilter>? exclusionFilters;
 }
 
 class ManufacturerDataFilter {
@@ -182,9 +186,17 @@ class ManufacturerDataFilter {
 }
 
 class AppleConnectionOptions {
-  AppleConnectionOptions({this.shouldRestoreState});
+  AppleConnectionOptions({
+    this.shouldRestoreState,
+    this.notifyOnConnection,
+    this.notifyOnDisconnection,
+    this.notifyOnNotification,
+  });
 
   bool? shouldRestoreState;
+  bool? notifyOnConnection;
+  bool? notifyOnDisconnection;
+  bool? notifyOnNotification;
 }
 
 class ConnectionPlatformConfig {
@@ -194,9 +206,21 @@ class ConnectionPlatformConfig {
 }
 
 class BleConnectionParametersUpdated {
-  BleConnectionParametersUpdated({required this.mtu});
+  BleConnectionParametersUpdated({
+    required this.mtu,
+    required this.deviceId,
+    this.interval,
+    this.latency,
+    this.supervisionTimeout,
+    this.status,
+  });
 
   int mtu;
+  String deviceId;
+  int? interval;
+  int? latency;
+  int? supervisionTimeout;
+  int? status;
 }
 
 @HostApi()
@@ -256,7 +280,7 @@ abstract class UniversalBlePlatformChannel {
   @async
   void unPair(String peripheralId);
   @async
-  List<UniversalBleScanResult> getSystemDevices();
+  List<UniversalBleScanResult> getSystemDevices({List<String>? withServices});
   @async
   BleConnectionState getConnectionState(String peripheralId);
   @async

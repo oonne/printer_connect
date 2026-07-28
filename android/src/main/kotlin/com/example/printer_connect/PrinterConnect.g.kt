@@ -643,7 +643,9 @@ data class UniversalScanFilter (
   val withServices: List<String>? = null,
   val withManufacturerData: List<ManufacturerDataFilter>? = null,
   val withLocalName: String? = null,
-  val withLocalNamePrefix: String? = null
+  val withLocalNamePrefix: List<String>? = null,
+  val withDeviceId: List<String>? = null,
+  val exclusionFilters: List<UniversalScanFilter>? = null
 )
  {
   companion object {
@@ -651,8 +653,10 @@ data class UniversalScanFilter (
       val withServices = pigeonVar_list[0] as List<String>?
       val withManufacturerData = pigeonVar_list[1] as List<ManufacturerDataFilter>?
       val withLocalName = pigeonVar_list[2] as String?
-      val withLocalNamePrefix = pigeonVar_list[3] as String?
-      return UniversalScanFilter(withServices, withManufacturerData, withLocalName, withLocalNamePrefix)
+      val withLocalNamePrefix = pigeonVar_list[3] as List<String>?
+      val withDeviceId = pigeonVar_list[4] as List<String>?
+      val exclusionFilters = pigeonVar_list[5] as List<UniversalScanFilter>?
+      return UniversalScanFilter(withServices, withManufacturerData, withLocalName, withLocalNamePrefix, withDeviceId, exclusionFilters)
     }
   }
   fun toList(): List<Any?> {
@@ -661,6 +665,8 @@ data class UniversalScanFilter (
       withManufacturerData,
       withLocalName,
       withLocalNamePrefix,
+      withDeviceId,
+      exclusionFilters,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -671,7 +677,7 @@ data class UniversalScanFilter (
       return true
     }
     val other = other as UniversalScanFilter
-    return PrinterConnectPigeonUtils.deepEquals(this.withServices, other.withServices) && PrinterConnectPigeonUtils.deepEquals(this.withManufacturerData, other.withManufacturerData) && PrinterConnectPigeonUtils.deepEquals(this.withLocalName, other.withLocalName) && PrinterConnectPigeonUtils.deepEquals(this.withLocalNamePrefix, other.withLocalNamePrefix)
+    return PrinterConnectPigeonUtils.deepEquals(this.withServices, other.withServices) && PrinterConnectPigeonUtils.deepEquals(this.withManufacturerData, other.withManufacturerData) && PrinterConnectPigeonUtils.deepEquals(this.withLocalName, other.withLocalName) && PrinterConnectPigeonUtils.deepEquals(this.withLocalNamePrefix, other.withLocalNamePrefix) && PrinterConnectPigeonUtils.deepEquals(this.withDeviceId, other.withDeviceId) && PrinterConnectPigeonUtils.deepEquals(this.exclusionFilters, other.exclusionFilters)
   }
 
   override fun hashCode(): Int {
@@ -680,6 +686,8 @@ data class UniversalScanFilter (
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.withManufacturerData)
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.withLocalName)
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.withLocalNamePrefix)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.withDeviceId)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.exclusionFilters)
     return result
   }
 }
@@ -728,18 +736,27 @@ data class ManufacturerDataFilter (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class AppleConnectionOptions (
-  val shouldRestoreState: Boolean? = null
+  val shouldRestoreState: Boolean? = null,
+  val notifyOnConnection: Boolean? = null,
+  val notifyOnDisconnection: Boolean? = null,
+  val notifyOnNotification: Boolean? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): AppleConnectionOptions {
       val shouldRestoreState = pigeonVar_list[0] as Boolean?
-      return AppleConnectionOptions(shouldRestoreState)
+      val notifyOnConnection = pigeonVar_list[1] as Boolean?
+      val notifyOnDisconnection = pigeonVar_list[2] as Boolean?
+      val notifyOnNotification = pigeonVar_list[3] as Boolean?
+      return AppleConnectionOptions(shouldRestoreState, notifyOnConnection, notifyOnDisconnection, notifyOnNotification)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       shouldRestoreState,
+      notifyOnConnection,
+      notifyOnDisconnection,
+      notifyOnNotification,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -750,12 +767,15 @@ data class AppleConnectionOptions (
       return true
     }
     val other = other as AppleConnectionOptions
-    return PrinterConnectPigeonUtils.deepEquals(this.shouldRestoreState, other.shouldRestoreState)
+    return PrinterConnectPigeonUtils.deepEquals(this.shouldRestoreState, other.shouldRestoreState) && PrinterConnectPigeonUtils.deepEquals(this.notifyOnConnection, other.notifyOnConnection) && PrinterConnectPigeonUtils.deepEquals(this.notifyOnDisconnection, other.notifyOnDisconnection) && PrinterConnectPigeonUtils.deepEquals(this.notifyOnNotification, other.notifyOnNotification)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.shouldRestoreState)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.notifyOnConnection)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.notifyOnDisconnection)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.notifyOnNotification)
     return result
   }
 }
@@ -796,18 +816,33 @@ data class ConnectionPlatformConfig (
 
 /** Generated class from Pigeon that represents data sent in messages. */
 data class BleConnectionParametersUpdated (
-  val mtu: Long
+  val mtu: Long,
+  val deviceId: String,
+  val interval: Long? = null,
+  val latency: Long? = null,
+  val supervisionTimeout: Long? = null,
+  val status: Long? = null
 )
  {
   companion object {
     fun fromList(pigeonVar_list: List<Any?>): BleConnectionParametersUpdated {
       val mtu = pigeonVar_list[0] as Long
-      return BleConnectionParametersUpdated(mtu)
+      val deviceId = pigeonVar_list[1] as String
+      val interval = pigeonVar_list[2] as Long?
+      val latency = pigeonVar_list[3] as Long?
+      val supervisionTimeout = pigeonVar_list[4] as Long?
+      val status = pigeonVar_list[5] as Long?
+      return BleConnectionParametersUpdated(mtu, deviceId, interval, latency, supervisionTimeout, status)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       mtu,
+      deviceId,
+      interval,
+      latency,
+      supervisionTimeout,
+      status,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -818,12 +853,17 @@ data class BleConnectionParametersUpdated (
       return true
     }
     val other = other as BleConnectionParametersUpdated
-    return PrinterConnectPigeonUtils.deepEquals(this.mtu, other.mtu)
+    return PrinterConnectPigeonUtils.deepEquals(this.mtu, other.mtu) && PrinterConnectPigeonUtils.deepEquals(this.deviceId, other.deviceId) && PrinterConnectPigeonUtils.deepEquals(this.interval, other.interval) && PrinterConnectPigeonUtils.deepEquals(this.latency, other.latency) && PrinterConnectPigeonUtils.deepEquals(this.supervisionTimeout, other.supervisionTimeout) && PrinterConnectPigeonUtils.deepEquals(this.status, other.status)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.mtu)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.deviceId)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.interval)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.latency)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.supervisionTimeout)
+    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.status)
     return result
   }
 }
@@ -1068,7 +1108,7 @@ interface UniversalBlePlatformChannel {
   fun isPaired(peripheralId: String, callback: (Result<Boolean>) -> Unit)
   fun pair(peripheralId: String, callback: (Result<Unit>) -> Unit)
   fun unPair(peripheralId: String, callback: (Result<Unit>) -> Unit)
-  fun getSystemDevices(callback: (Result<List<UniversalBleScanResult>>) -> Unit)
+  fun getSystemDevices(withServices: List<String>?, callback: (Result<List<UniversalBleScanResult>>) -> Unit)
   fun getConnectionState(peripheralId: String, callback: (Result<BleConnectionState>) -> Unit)
   fun readRssi(peripheralId: String, callback: (Result<Long>) -> Unit)
   fun requestConnectionPriority(peripheralId: String, priority: BleConnectionPriority, callback: (Result<Unit>) -> Unit)
@@ -1434,8 +1474,10 @@ interface UniversalBlePlatformChannel {
       run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.getSystemDevices$separatedMessageChannelSuffix", codec)
         if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            api.getSystemDevices{ result: Result<List<UniversalBleScanResult>> ->
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val withServicesArg = args[0] as List<String>?
+            api.getSystemDevices(withServicesArg) { result: Result<List<UniversalBleScanResult>> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PrinterConnectPigeonUtils.wrapError(error))

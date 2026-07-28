@@ -1,10 +1,13 @@
-import 'dart:typed_data';
+import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:printer_connect/src/printer_connect.g.dart'
     hide BleConnectionParametersUpdated, ConnectionPlatformConfig;
 import 'package:printer_connect/src/models/model_exports.dart';
 import 'package:printer_connect/src/utils/exports.dart';
 import 'package:printer_connect/src/interfaces/printer_connect_platform_interface.dart';
+import 'package:printer_connect/src/printer_connect_exceptions.dart'
+    as exceptions;
 
 class PrinterConnect {
   PrinterConnect._();
@@ -13,6 +16,10 @@ class PrinterConnect {
       PrinterConnectPlatform.instance;
 
   static final Map<String, BleCommandQueue> _queues = {};
+  static final Set<String> _connectedDevices = {};
+  static final Set<String> _connectingDevices = {};
+  static final Map<String, StreamSubscription<BleConnectionState>>
+      _connectionSubscriptions = {};
 
   static Stream<BleDevice> get scanStream => _platform.scanStream;
 
@@ -43,12 +50,20 @@ class PrinterConnect {
 
   static Future<void> startScan(
       {ScanFilter? scanFilter, PlatformConfig? platformConfig}) async {
-    return _platform.startScan(
-        scanFilter: scanFilter, platformConfig: platformConfig);
+    try {
+      return await _platform.startScan(
+          scanFilter: scanFilter, platformConfig: platformConfig);
+    } on PlatformException catch (e) {
+      throw exceptions.errorParser(e);
+    }
   }
 
   static Future<void> stopScan() async {
-    return _platform.stopScan();
+    try {
+      return await _platform.stopScan();
+    } on PlatformException catch (e) {
+      throw exceptions.errorParser(e);
+    }
   }
 
   static Future<bool> isScanning() async {
@@ -59,15 +74,56 @@ class PrinterConnect {
       {Duration? timeout,
       bool autoConnect = false,
       ConnectionPlatformConfig? platformConfig}) async {
-    return _platform.connect(deviceId,
-        connectionTimeout: timeout,
-        autoConnect: autoConnect,
-        platformConfig: platformConfig);
+    if (_connectingDevices.contains(deviceId)) {
+      throw StateError('Already connecting to $deviceId');
+    }
+    if (_connectedDevices.contains(deviceId)) {
+      return;
+    }
+    _connectingDevices.add(deviceId);
+    try {
+      await _platform.connect(deviceId,
+          connectionTimeout: timeout,
+          autoConnect: autoConnect,
+          platformConfig: platformConfig);
+      _connectedDevices.add(deviceId);
+      _setupConnectionTracking(deviceId);
+    } on PlatformException catch (e) {
+      throw exceptions.errorParser(e);
+    } finally {
+      _connectingDevices.remove(deviceId);
+    }
   }
 
   static Future<void> disconnect(String deviceId) async {
-    return _platform.disconnect(deviceId);
+    try {
+      await _platform.disconnect(deviceId);
+    } on PlatformException catch (e) {
+      throw exceptions.errorParser(e);
+    } finally {
+      _connectedDevices.remove(deviceId);
+      await _connectionSubscriptions[deviceId]?.cancel();
+      _connectionSubscriptions.remove(deviceId);
+    }
   }
+
+  static void _setupConnectionTracking(String deviceId) {
+    _connectionSubscriptions[deviceId]?.cancel();
+    _connectionSubscriptions[deviceId] =
+        connectionStream(deviceId).listen((state) {
+      if (state == BleConnectionState.disconnected) {
+        _connectedDevices.remove(deviceId);
+        _connectionSubscriptions[deviceId]?.cancel();
+        _connectionSubscriptions.remove(deviceId);
+      }
+    });
+  }
+
+  static List<String> get connectedDevices => List.unmodifiable(_connectedDevices);
+
+  static bool isDeviceConnected(String deviceId) => _connectedDevices.contains(deviceId);
+
+  static bool isDeviceConnecting(String deviceId) => _connectingDevices.contains(deviceId);
 
   static Future<List<BleService>> discoverServices(String deviceId,
       {bool withDescriptors = false, Duration? timeout, String? queueId}) async {

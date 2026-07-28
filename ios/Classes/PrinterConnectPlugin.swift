@@ -34,6 +34,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
     private var peripherals: [String: CBPeripheral] = [:]
     private var scanFilter: UniversalScanFilter?
     private var isScanningActive: Bool = false
+    private var autoConnectDevices: Set<String> = []
 
     private var readFutures: [String: CharacteristicReadFuture] = [:]
     private var writeFutures: [String: CharacteristicWriteFuture] = [:]
@@ -115,9 +116,21 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
     }
 
     func hasPermissions(completion: @escaping (Result<Bool, PigeonError>) -> Void) {
+        #if os(iOS)
+        if #available(iOS 13.1, *) {
+            let authorization = CBCentralManager.authorization
+            let hasPermissions = authorization != .denied && authorization != .restricted
+            completion(.success(hasPermissions))
+        } else {
+            let state = centralManager.state
+            let hasPermissions = state != .unsupported && state != .unauthorized
+            completion(.success(hasPermissions))
+        }
+        #elseif os(macOS)
         let state = centralManager.state
         let hasPermissions = state != .unsupported && state != .unauthorized
         completion(.success(hasPermissions))
+        #endif
     }
 
     func requestPermissions(completion: @escaping (Result<Bool, PigeonError>) -> Void) {
@@ -244,15 +257,24 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         var options: [String: Any] = [:]
         #if os(iOS)
         if let appleOptions = configArg.apple {
-            if let shouldRestore = appleOptions.shouldRestoreState, shouldRestore {
+            if let notifyOnConnection = appleOptions.notifyOnConnection, notifyOnConnection {
+                options[CBConnectPeripheralOptionNotifyOnConnectionKey] = true
+            }
+            if let notifyOnDisconnection = appleOptions.notifyOnDisconnection, notifyOnDisconnection {
                 options[CBConnectPeripheralOptionNotifyOnDisconnectionKey] = true
+            }
+            if let notifyOnNotification = appleOptions.notifyOnNotification, notifyOnNotification {
                 options[CBConnectPeripheralOptionNotifyOnNotificationKey] = true
             }
         }
         if #available(iOS 17.0, *) {
             options[CBConnectPeripheralOptionEnableAutoReconnect] = true
+        } else {
+            logger.logWarning("autoConnect (CBConnectPeripheralOptionEnableAutoReconnect) is only available on iOS 17+")
         }
         #endif
+
+        autoConnectDevices.insert(peripheralIdArg)
 
         connectionFutures[peripheralIdArg] = ConnectionStateFuture { result in
             switch result {
@@ -267,6 +289,8 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
     }
 
     func disconnect(peripheralId peripheralIdArg: String, completion: @escaping (Result<Void, PigeonError>) -> Void) {
+        autoConnectDevices.remove(peripheralIdArg)
+
         guard let peripheral = getPeripheral(peripheralIdArg) else {
             completion(.failure(PigeonError(
                 code: "peripheralNotFound",
@@ -277,6 +301,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         }
 
         guard peripheral.state != .disconnected else {
+            cleanUpConnection(peripheralIdArg)
             completion(.success(()))
             return
         }
@@ -284,13 +309,25 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         connectionFutures[peripheralIdArg] = ConnectionStateFuture { result in
             switch result {
             case .success:
+                self.cleanUpConnection(peripheralIdArg)
                 completion(.success(()))
             case .failure(let error):
+                self.cleanUpConnection(peripheralIdArg)
                 completion(.failure(error))
             }
         }
 
         centralManager.cancelPeripheralConnection(peripheral)
+    }
+
+    private func cleanUpConnection(_ peripheralId: String) {
+        readFutures.removeValue(forKey: peripheralId)
+        writeFutures.removeValue(forKey: peripheralId)
+        notifyFutures.removeValue(forKey: peripheralId)
+        rssiFutures.removeValue(forKey: peripheralId)
+        mtuFutures.removeValue(forKey: peripheralId)
+        discoverFutures.removeValue(forKey: peripheralId)
+        serviceDiscoveries.removeValue(forKey: peripheralId)
     }
 
     func setNotifiable(peripheralId peripheralIdArg: String, serviceId serviceIdArg: String, characteristicId characteristicIdArg: String, value valueArg: BleInputProperty, completion: @escaping (Result<Void, PigeonError>) -> Void) {
@@ -515,8 +552,9 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
         completion(.success(()))
     }
 
-    func getSystemDevices(completion: @escaping (Result<[UniversalBleScanResult], PigeonError>) -> Void) {
-        let connected = centralManager.retrieveConnectedPeripherals(withServices: [])
+    func getSystemDevices(withServices withServicesArg: [String]?, completion: @escaping (Result<[UniversalBleScanResult], PigeonError>) -> Void) {
+        let services = withServicesArg?.compactMap { CBUUID(string: $0) } ?? []
+        let connected = centralManager.retrieveConnectedPeripherals(withServices: services.isEmpty ? nil : services)
         var results: [UniversalBleScanResult] = []
 
         for peripheral in connected {
@@ -526,7 +564,7 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
                 rssi: 0,
                 manufacturerData: nil,
                 serviceData: nil,
-                serviceUuids: nil,
+                serviceUuids: withServicesArg,
                 txPowerLevel: nil
             )
             results.append(result)
@@ -869,7 +907,31 @@ class BleCentralDarwin: NSObject, UniversalBlePlatformChannelProtocol {
             future.completion(.success(Int64(mtu)))
         }
 
-        let updated = BleConnectionParametersUpdated(mtu: Int64(mtu))
+        let updated = BleConnectionParametersUpdated(
+            mtu: Int64(mtu),
+            deviceId: peripheralId,
+            interval: nil,
+            latency: nil,
+            supervisionTimeout: nil,
+            status: nil
+        )
         sendConnectionParametersUpdated(updated)
     }
+
+    #if os(iOS)
+    func peripheral(_ peripheral: CBPeripheral, didUpdateConnectionParameters parameters: CBConnectionParameters) {
+        let peripheralId = peripheral.identifier.uuidString
+        logger.logDebug("Connection parameters updated for \(peripheralId): interval=\(parameters.interval), latency=\(parameters.latency), supervisionTimeout=\(parameters.supervisionTimeout)")
+
+        let updated = BleConnectionParametersUpdated(
+            mtu: Int64(peripheral.maximumWriteValueLength(for: .withResponse)),
+            deviceId: peripheralId,
+            interval: Int64(parameters.interval),
+            latency: Int64(parameters.latency),
+            supervisionTimeout: Int64(parameters.supervisionTimeout),
+            status: 0
+        )
+        sendConnectionParametersUpdated(updated)
+    }
+    #endif
 }

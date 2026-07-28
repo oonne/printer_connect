@@ -14,6 +14,8 @@ class BleCapabilities {
   final bool supportsPeriodicAdvertising;
   final bool supportsLE2M;
   final bool supportsCodedPHY;
+  final bool supportsIOS17;
+  final bool supportsAndroidV31;
 
   const BleCapabilities({
     this.supportsBluetooth = false,
@@ -29,6 +31,8 @@ class BleCapabilities {
     this.supportsPeriodicAdvertising = false,
     this.supportsLE2M = false,
     this.supportsCodedPHY = false,
+    this.supportsIOS17 = false,
+    this.supportsAndroidV31 = false,
   });
 
   factory BleCapabilities.fromJson(Map<String, dynamic> json) {
@@ -46,6 +50,8 @@ class BleCapabilities {
       supportsPeriodicAdvertising: json['supportsPeriodicAdvertising'] as bool? ?? false,
       supportsLE2M: json['supportsLE2M'] as bool? ?? false,
       supportsCodedPHY: json['supportsCodedPHY'] as bool? ?? false,
+      supportsIOS17: json['supportsIOS17'] as bool? ?? false,
+      supportsAndroidV31: json['supportsAndroidV31'] as bool? ?? false,
     );
   }
 
@@ -64,6 +70,8 @@ class BleCapabilities {
       'supportsPeriodicAdvertising': supportsPeriodicAdvertising,
       'supportsLE2M': supportsLE2M,
       'supportsCodedPHY': supportsCodedPHY,
+      'supportsIOS17': supportsIOS17,
+      'supportsAndroidV31': supportsAndroidV31,
     };
   }
 
@@ -73,6 +81,8 @@ class BleCapabilities {
   bool get canReadCharacteristic => supportsRead;
   bool get canNotify => supportsNotify;
   bool get canIndicate => supportsIndicate;
+  bool get supportsAutoReconnect => supportsIOS17;
+  bool get supportsBonded => supportsAndroidV31;
 
   factory BleCapabilities.detect() {
     if (kIsWeb) {
@@ -109,6 +119,7 @@ class BleCapabilities {
           supportsPeriodicAdvertising: false,
           supportsLE2M: false,
           supportsCodedPHY: false,
+          supportsAndroidV31: true,
         );
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
@@ -126,6 +137,7 @@ class BleCapabilities {
           supportsPeriodicAdvertising: false,
           supportsLE2M: false,
           supportsCodedPHY: false,
+          supportsIOS17: true,
         );
       case TargetPlatform.linux:
         return const BleCapabilities(

@@ -13,14 +13,17 @@ class UniversalBleStreamController<T> {
     if (_isClosed) {
       throw StateError('UniversalBleStreamController has been closed');
     }
-    if (_controller == null) {
-      _controller = StreamController<T>.broadcast(
-        onListen: _onListen,
-        onCancel: _onCancel,
-      );
-      _stream = _controller!.stream;
-    }
+    _setupStreamIfRequired();
     return _stream!;
+  }
+
+  void _setupStreamIfRequired() {
+    if (_controller != null) return;
+    _controller = StreamController<T>.broadcast(
+      onListen: _onListen,
+      onCancel: _onCancel,
+    );
+    _stream = _controller!.stream;
   }
 
   void _onListen() {
@@ -45,25 +48,13 @@ class UniversalBleStreamController<T> {
 
   void add(T value) {
     if (_isClosed) return;
-    if (_controller == null) {
-      _controller = StreamController<T>.broadcast(
-        onListen: _onListen,
-        onCancel: _onCancel,
-      );
-      _stream = _controller!.stream;
-    }
+    _setupStreamIfRequired();
     _controller!.add(value);
   }
 
   void addError(Object error, [StackTrace? stackTrace]) {
     if (_isClosed) return;
-    if (_controller == null) {
-      _controller = StreamController<T>.broadcast(
-        onListen: _onListen,
-        onCancel: _onCancel,
-      );
-      _stream = _controller!.stream;
-    }
+    _setupStreamIfRequired();
     _controller!.addError(error, stackTrace);
   }
 
@@ -81,7 +72,7 @@ class UniversalBleStreamController<T> {
     }
   }
 
-  bool get isClosed => _isClosed;
+  bool get isClosed => _isClosed || (_controller?.isClosed ?? true);
 
   bool get hasListener => _controller?.hasListener ?? false;
 }

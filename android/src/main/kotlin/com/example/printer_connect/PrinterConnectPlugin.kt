@@ -44,6 +44,14 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
 
     private val gattServers = ConcurrentHashMap<String, BluetoothGatt>()
     private val scanResults = mutableMapOf<String, UniversalBleScanResult>()
+    private val cachedServices = ConcurrentHashMap<String, List<UniversalBleService>>()
+    private val connectingDevices = ConcurrentHashMap.newKeySet<String>()
+
+    private val readFutures = ConcurrentHashMap<String, (Result<UniversalBleCharacteristic>) -> Unit>()
+    private val writeFutures = ConcurrentHashMap<String, (Result<Unit>) -> Unit>()
+    private val discoverFutures = ConcurrentHashMap<String, (Result<List<UniversalBleService>>) -> Unit>()
+    private val rssiFutures = ConcurrentHashMap<String, (Result<Long>) -> Unit>()
+    private val mtuFutures = ConcurrentHashMap<String, (Result<Long>) -> Unit>()
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -84,6 +92,7 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
                 PrinterConnectLogger.logError("Connection failed for $deviceAddress with status: $status")
                 gatt.close()
                 gattServers.remove(deviceAddress)
+                cachedServices.remove(deviceAddress)
                 sendConnectionChanged(deviceAddress, BleConnectionState.DISCONNECTED)
                 return
             }
@@ -97,6 +106,8 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     gatt.close()
                     gattServers.remove(deviceAddress)
+                    cachedServices.remove(deviceAddress)
+                    clearFuturesForDevice(deviceAddress)
                     PrinterConnectLogger.logInfo("Disconnected from $deviceAddress")
                 }
             }
@@ -107,12 +118,22 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             val deviceAddress = gatt.device.address
             PrinterConnectLogger.logDebug("Services discovered for $deviceAddress, status=$status")
 
+            val future = discoverFutures.remove(deviceAddress)
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 PrinterConnectLogger.logError("Service discovery failed for $deviceAddress with status: $status")
+                future?.invoke(Result.failure(FlutterError("discover_failed", "Service discovery failed with status: $status", "")))
                 return
             }
 
             gatt.saveCacheIfNeeded()
+            val services = gatt.services.map { service ->
+                UniversalBleService(
+                    uuid = service.uuid.toString(),
+                    isPrimary = service.isPrimary
+                )
+            }
+            cachedServices[deviceAddress] = services
+            future?.invoke(Result.success(services))
         }
 
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
@@ -121,10 +142,17 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             val charUuid = characteristic.uuid.toString()
             PrinterConnectLogger.logDebug("Characteristic read for $deviceAddress/$serviceUuid/$charUuid, status=$status")
 
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                val valueBytes = characteristic.value
-                val valueList = valueBytes?.map { it.toLong() and 0xFFL } ?: emptyList()
-                PrinterConnectLogger.logVerbose("Read value: $valueList")
+            val key = "$deviceAddress/$serviceUuid/$charUuid"
+            val future = readFutures.remove(key)
+            if (future != null) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    val valueBytes = characteristic.value
+                    val valueList = valueBytes?.map { it.toLong() and 0xFFL } ?: emptyList()
+                    val properties = characteristic.getPropertiesList()
+                    future.invoke(Result.success(UniversalBleCharacteristic(charUuid, properties, valueList)))
+                } else {
+                    future.invoke(Result.failure(FlutterError("read_failed", "Read failed with status: $status", "")))
+                }
             }
         }
 
@@ -133,6 +161,16 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             val serviceUuid = characteristic.service.uuid.toString()
             val charUuid = characteristic.uuid.toString()
             PrinterConnectLogger.logDebug("Characteristic write for $deviceAddress/$serviceUuid/$charUuid, status=$status")
+
+            val key = "$deviceAddress/$serviceUuid/$charUuid"
+            val future = writeFutures.remove(key)
+            if (future != null) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    future.invoke(Result.success(Unit))
+                } else {
+                    future.invoke(Result.failure(FlutterError("write_failed", "Write failed with status: $status", "")))
+                }
+            }
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
@@ -160,14 +198,36 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             val deviceAddress = gatt.device.address
             PrinterConnectLogger.logDebug("MTU changed for $deviceAddress: mtu=$mtu, status=$status")
+
+            val future = mtuFutures.remove(deviceAddress)
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                sendConnectionParametersUpdated(BleConnectionParametersUpdated(mtu.toLong()))
+                val updated = BleConnectionParametersUpdated(
+                    mtu = mtu.toLong(),
+                    deviceId = deviceAddress,
+                    interval = null,
+                    latency = null,
+                    supervisionTimeout = null,
+                    status = status.toLong()
+                )
+                sendConnectionParametersUpdated(updated)
+                future?.invoke(Result.success(mtu.toLong()))
+            } else {
+                future?.invoke(Result.failure(FlutterError("mtu_failed", "MTU change failed with status: $status", "")))
             }
         }
 
         override fun onReadRemoteRssi(gatt: BluetoothGatt, rssi: Int, status: Int) {
             val deviceAddress = gatt.device.address
             PrinterConnectLogger.logDebug("RSSI read for $deviceAddress: rssi=$rssi, status=$status")
+
+            val future = rssiFutures.remove(deviceAddress)
+            if (future != null) {
+                if (status == BluetoothGatt.GATT_SUCCESS) {
+                    future.invoke(Result.success(rssi.toLong()))
+                } else {
+                    future.invoke(Result.failure(FlutterError("rssi_failed", "RSSI read failed with status: $status", "")))
+                }
+            }
         }
     }
 
@@ -296,6 +356,32 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             } catch (_: Exception) {}
         }
         gattServers.clear()
+        cachedServices.clear()
+        clearAllFutures()
+    }
+
+    private fun clearFuturesForDevice(deviceAddress: String) {
+        discoverFutures.remove(deviceAddress)
+        mtuFutures.remove(deviceAddress)
+        rssiFutures.remove(deviceAddress)
+        val keysToRemove = mutableListOf<String>()
+        for (key in readFutures.keys) {
+            if (key.startsWith("$deviceAddress/")) keysToRemove.add(key)
+        }
+        for (key in keysToRemove) readFutures.remove(key)
+        val keysToRemoveWrite = mutableListOf<String>()
+        for (key in writeFutures.keys) {
+            if (key.startsWith("$deviceAddress/")) keysToRemoveWrite.add(key)
+        }
+        for (key in keysToRemoveWrite) writeFutures.remove(key)
+    }
+
+    private fun clearAllFutures() {
+        readFutures.clear()
+        writeFutures.clear()
+        discoverFutures.clear()
+        rssiFutures.clear()
+        mtuFutures.clear()
     }
 
     override fun getBluetoothAvailabilityState(callback: (Result<AvailabilityState>) -> Unit) {
@@ -651,23 +737,21 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             return
         }
 
+        cachedServices[peripheralId]?.let { services ->
+            callback(Result.success(services))
+            return
+        }
+
         try {
+            discoverFutures[peripheralId] = callback
             val success = gatt.discoverServices()
             if (!success) {
+                discoverFutures.remove(peripheralId)
                 callback(Result.failure(FlutterError("discover_failed", "Failed to discover services", "")))
                 return
             }
-
-            handler.postDelayed({
-                val services = gatt.services.map { service ->
-                    UniversalBleService(
-                        uuid = service.uuid.toString(),
-                        isPrimary = service.isPrimary
-                    )
-                }
-                callback(Result.success(services))
-            }, 500)
         } catch (e: Exception) {
+            discoverFutures.remove(peripheralId)
             callback(Result.failure(FlutterError("discover_error", e.message ?: "Unknown error", "")))
         }
     }
@@ -740,13 +824,9 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         }
 
         try {
+            val key = "$peripheralId/$serviceId/$characteristicId"
+            readFutures[key] = callback
             gatt.readCharacteristic(characteristic)
-            handler.postDelayed({
-                val valueBytes = characteristic.value
-                val valueList = valueBytes?.map { it.toLong() and 0xFFL } ?: emptyList()
-                val properties = characteristic.getPropertiesList()
-                callback(Result.success(UniversalBleCharacteristic(characteristicId, properties, valueList)))
-            }, 500)
         } catch (e: Exception) {
             callback(Result.failure(FlutterError("read_error", e.message ?: "Unknown error", "")))
         }
@@ -784,9 +864,15 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
             }
 
             characteristic.writeType = writeType
+            val key = "$peripheralId/$serviceId/$characteristicId"
+            writeFutures[key] = callback
             gatt.writeCharacteristic(characteristic)
             PrinterConnectLogger.logDebug("Written ${value.size} bytes to $characteristicId")
-            callback(Result.success(Unit))
+
+            if (writeType == BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE) {
+                writeFutures.remove(key)
+                callback(Result.success(Unit))
+            }
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error writing value: ${e.message}")
             callback(Result.failure(FlutterError("write_error", e.message ?: "Unknown error", "")))
@@ -802,16 +888,15 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         }
 
         try {
+            mtuFutures[peripheralId] = callback
             val success = gatt.requestMtu(mtu.toInt())
             if (!success) {
+                mtuFutures.remove(peripheralId)
                 callback(Result.failure(FlutterError("mtu_request_failed", "MTU request failed", "")))
                 return
             }
-
-            handler.postDelayed({
-                callback(Result.success(mtu))
-            }, 500)
         } catch (e: Exception) {
+            mtuFutures.remove(peripheralId)
             callback(Result.failure(FlutterError("mtu_error", e.message ?: "Unknown error", "")))
         }
     }
@@ -825,12 +910,10 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
         }
 
         try {
+            rssiFutures[peripheralId] = callback
             gatt.readRemoteRssi()
-            handler.postDelayed({
-                val rssi = gatt.device.rssi
-                callback(Result.success(rssi.toLong()))
-            }, 500)
         } catch (e: Exception) {
+            rssiFutures.remove(peripheralId)
             callback(Result.failure(FlutterError("rssi_error", e.message ?: "Unknown error", "")))
         }
     }
@@ -925,22 +1008,39 @@ class PrinterConnectPlugin : FlutterPlugin, ActivityAware, UniversalBlePlatformC
     }
 
     @SuppressLint("MissingPermission")
-    override fun getSystemDevices(callback: (Result<List<UniversalBleScanResult>>) -> Unit) {
+    override fun getSystemDevices(withServices: List<String>?, callback: (Result<List<UniversalBleScanResult>>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
             callback(Result.success(emptyList()))
             return
         }
 
-        val devices = adapter.bondedDevices
-        val results = devices.map { device ->
+        val context = context
+        if (context == null) {
+            callback(Result.success(emptyList()))
+            return
+        }
+
+        val connectedDevices = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                adapter.getConnectedDevices(BluetoothProfile.GATT)
+            } else {
+                @Suppress("DEPRECATION")
+                adapter.bondedDevices.toList()
+            }
+        } catch (e: Exception) {
+            PrinterConnectLogger.logError("Error getting connected devices: ${e.message}")
+            emptyList<BluetoothDevice>()
+        }
+
+        val results = connectedDevices.map { device ->
             UniversalBleScanResult(
                 peripheralId = device.address,
                 name = device.name,
                 rssi = 0L,
                 manufacturerData = null,
                 serviceData = null,
-                serviceUuids = null,
+                serviceUuids = withServices,
                 txPowerLevel = null
             )
         }

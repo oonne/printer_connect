@@ -218,9 +218,29 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
                   mask: m.mask?.toList(),
                 ))
             .toList(),
-        withLocalName: filter.withNamePrefix,
+        withLocalName: filter.withLocalName,
+        withLocalNamePrefix: filter.withNamePrefix,
+        withDeviceId: filter.withDeviceId,
+        exclusionFilters: filter.exclusionFilters
+            ?.map((e) => _convertExclusionFilter(e))
+            .toList(),
       ),
     ];
+  }
+
+  UniversalScanFilter _convertExclusionFilter(ScanFilter filter) {
+    return UniversalScanFilter(
+      withServices: filter.withServices,
+      withLocalNamePrefix: filter.withNamePrefix,
+      withDeviceId: filter.withDeviceId,
+      withManufacturerData: filter.withManufacturerData
+          ?.map((m) => ManufacturerDataFilter(
+                companyId: m.companyId,
+                data: m.data.toList(),
+                mask: m.mask?.toList(),
+              ))
+          .toList(),
+    );
   }
 
   pigeon.AndroidOptions _convertAndroidOptions(PlatformConfig? config) {
@@ -242,6 +262,9 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
     return pigeon.ConnectionPlatformConfig(
       apple: pigeon.AppleConnectionOptions(
         shouldRestoreState: apple.enableAutoReceiveData,
+        notifyOnConnection: apple.notifyOnConnection,
+        notifyOnDisconnection: apple.notifyOnDisconnection,
+        notifyOnNotification: apple.notifyOnNotification,
       ),
     );
   }
@@ -293,7 +316,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   @override
   void onConnectionParametersUpdated(
       pigeon.BleConnectionParametersUpdated result) {
-    updateConnectionParameters('', result);
+    updateConnectionParameters(result.deviceId, result);
   }
 
   @override
@@ -438,7 +461,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<List<BleDevice>> getSystemDevices(List<String>? withServices) async {
-    final devices = await _platformChannel.getSystemDevices();
+    final devices = await _platformChannel.getSystemDevices(withServices: withServices);
     return devices
         .map((d) => BleDevice(
               deviceId: d.peripheralId,
