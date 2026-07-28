@@ -1,8 +1,12 @@
-
-import 'printer_connect_platform_interface.dart';
-
-class PrinterConnect {
-  Future<String?> getPlatformVersion() {
-    return PrinterConnectPlatform.instance.getPlatformVersion();
-  }
-}
+export 'src/printer_connect.dart';
+export 'src/interfaces/printer_connect_platform_interface.dart';
+export 'src/printer_connect_exceptions.dart';
+export 'src/models/model_exports.dart' hide CharacteristicProperty;
+export 'src/utils/exports.dart';
+export 'src/printer_connect.g.dart'
+    hide
+        BleConnectionParametersUpdated,
+        ConnectionPlatformConfig,
+        AndroidOptions,
+        AppleConnectionOptions,
+        CharacteristicProperty;

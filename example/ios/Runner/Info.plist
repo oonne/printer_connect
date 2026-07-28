@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app uses Bluetooth to connect to BLE devices.</string>
+	<key>NSBluetoothWhenInUseUsageDescription</key>
+	<string>This app uses Bluetooth to connect to BLE devices when the app is in use.</string>
 </dict>
 </plist>

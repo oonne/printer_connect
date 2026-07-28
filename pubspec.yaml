@@ -14,11 +14,13 @@ dependencies:
   flutter:
     sdk: flutter
   plugin_platform_interface: ^2.0.2
+  meta: ^1.17.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  pigeon: ^26.3.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -42,6 +44,7 @@ flutter:
         pluginClass: PrinterConnectPlugin
       ios:
         pluginClass: PrinterConnectPlugin
+        sharedDarwinSource: true
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:
