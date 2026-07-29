@@ -1,122 +1,80 @@
 import 'dart:async';
 
-class Queue<T> {
-  final List<_QueueItem<T>> _items = [];
-  final List<_QueueItem<T>> _nextCycleItems = [];
-  bool _isProcessing = false;
+/// Original Author: Ryan Knell (https://github.com/rknell/dart_queue)
+/// Queue to execute Futures in order.
+/// It awaits each future before executing the next one.
+class Queue {
+  final Set<int> _activeItems = {};
+  int _lastProcessId = 0;
+  bool _isCancelled = false;
+  final List<_QueuedFuture> _nextCycle = [];
+  Function(int)? onRemainingItemsUpdate;
 
-  final void Function(int remainingItems)? onRemainingItemsUpdate;
-
-  Queue({this.onRemainingItemsUpdate});
-
-  int get activeItemsCount => _items.where((e) => e.isActive).length;
-
-  int get nextCycleItemsCount => _nextCycleItems.length;
-
-  int get totalRemainingItems => _items.length + _nextCycleItems.length;
-
-  Future<T> add(Future<T> Function() task, {Duration? timeout}) {
+  Future<T> add<T>(Future<T> Function() closure, [Duration? timeout]) {
+    if (_isCancelled) throw Exception('Queue Cancelled');
     final completer = Completer<T>();
-    final item = _QueueItem<T>(
-      task: task,
-      completer: completer,
-      timeout: timeout,
-    );
-    _items.add(item);
-    _tryProcess();
+    _nextCycle.add(_QueuedFuture<T>(closure, completer, timeout));
+    _updateRemainingItems();
+    if (_activeItems.isEmpty) _queueUpNext();
     return completer.future;
   }
 
-  void _tryProcess() {
-    if (_isProcessing) return;
-    if (_items.isEmpty && _nextCycleItems.isNotEmpty) {
-      _items.addAll(_nextCycleItems);
-      _nextCycleItems.clear();
-    }
-    if (_items.isEmpty) {
-      _onRemainingItemsUpdate();
-      return;
-    }
-    _isProcessing = true;
-    _processNext();
-  }
-
-  void _processNext() {
-    if (_items.isEmpty) {
-      _isProcessing = false;
-      _tryProcess();
-      return;
-    }
-
-    final item = _items.first;
-    item.execute().whenComplete(() {
-      _items.remove(item);
-      _isProcessing = false;
-      _tryProcess();
-    });
-  }
-
-  void _onRemainingItemsUpdate() {
-    onRemainingItemsUpdate?.call(totalRemainingItems);
-  }
-
-  void moveToNextCycle() {
-    _nextCycleItems.addAll(_items);
-    _items.clear();
-  }
-
-  void _completeItemsWithError(List<_QueueItem<T>> items) {
-    for (final item in items) {
-      if (!item.completer.isCompleted) {
-        item.completer.completeError(
-          StateError('Queue has been disposed'),
-        );
-      }
-    }
-  }
-
-  void clear() {
-    _completeItemsWithError(_items);
-    _completeItemsWithError(_nextCycleItems);
-    _items.clear();
-    _nextCycleItems.clear();
-    _isProcessing = false;
-  }
-
   void dispose() {
-    _completeItemsWithError(_items);
-    _completeItemsWithError(_nextCycleItems);
-    _items.clear();
-    _nextCycleItems.clear();
-    _isProcessing = false;
+    for (final item in _nextCycle) {
+      item.completer.completeError(Exception('Queue Cancelled'));
+    }
+    _nextCycle.removeWhere((item) => item.completer.isCompleted);
+    _isCancelled = true;
+  }
+
+  void _queueUpNext() {
+    if (_nextCycle.isNotEmpty && !_isCancelled && _activeItems.length <= 1) {
+      final processId = _lastProcessId;
+      _activeItems.add(processId);
+      final item = _nextCycle.first;
+      _lastProcessId++;
+      _nextCycle.remove(item);
+      item.onComplete = () async {
+        _activeItems.remove(processId);
+        _updateRemainingItems();
+        _queueUpNext();
+      };
+      unawaited(item.execute());
+    }
+  }
+
+  void _updateRemainingItems() {
+    int remainingQueueItems = _nextCycle.length + _activeItems.length;
+    onRemainingItemsUpdate?.call(remainingQueueItems);
   }
 }
 
-class _QueueItem<T> {
-  final Future<T> Function() task;
-  final Completer<T> completer;
+class _QueuedFuture<T> {
+  final Completer completer;
+  final Future<T> Function() closure;
+  Function? onComplete;
   final Duration? timeout;
-  bool isActive = false;
 
-  _QueueItem({
-    required this.task,
-    required this.completer,
-    this.timeout,
-  });
+  _QueuedFuture(this.closure, this.completer, this.timeout, {this.onComplete});
 
   Future<void> execute() async {
-    isActive = true;
     try {
-      final result = await task().timeout(
-            timeout ?? const Duration(seconds: 30),
-          );
-      if (!completer.isCompleted) {
+      T result;
+      if (timeout != null) {
+        result = await closure().timeout(timeout!);
+      } else {
+        result = await closure();
+      }
+      if (result != null) {
         completer.complete(result);
+      } else {
+        completer.complete(null);
       }
-    } catch (e) {
-      if (!completer.isCompleted) {
-        completer.completeError(e);
-      }
+      await Future.microtask(() {});
+    } catch (e, stack) {
+      completer.completeError(e, stack);
+    } finally {
+      if (onComplete != null) onComplete!.call();
     }
   }
 }

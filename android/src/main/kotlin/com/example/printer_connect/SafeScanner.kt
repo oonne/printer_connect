@@ -1,15 +1,24 @@
 package com.example.printer_connect
 
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
-import java.util.concurrent.CopyOnWriteArrayList
+import java.util.LinkedList
 
+/**
+ * Manages safe scan operations by limiting the number of concurrent scans
+ * within a time window to prevent Bluetooth adapter issues.
+ */
 class SafeScanner {
 
     private data class ScanRecord(val startTimeMs: Long)
 
-    private val scanHistory = CopyOnWriteArrayList<ScanRecord>()
+    private val scanHistory = LinkedList<ScanRecord>()
     private val maxScanRecords = 5
     private val scanWindowMs = 30_000L
+
+    private val delayedScanHandler = Handler(Looper.getMainLooper())
+    private var delayedScanRunnable: Runnable? = null
 
     @Synchronized
     fun canStartScan(): Boolean {
@@ -51,9 +60,42 @@ class SafeScanner {
     @Synchronized
     fun reset() {
         scanHistory.clear()
+        delayedScanRunnable?.let { delayedScanHandler.removeCallbacks(it) }
+        delayedScanRunnable = null
         PrinterConnectLogger.logDebug("SafeScanner reset")
     }
 
+    /**
+     * Schedules a scan to start after the cooldown period has elapsed.
+     * @param onReady The callback to execute when the scan can start
+     */
+    fun scheduleScanStart(onReady: () -> Unit) {
+        synchronized(this) {
+            // Remove any previously scheduled delayed runnable
+            delayedScanRunnable?.let { delayedScanHandler.removeCallbacks(it) }
+
+            val delayMs = getTimeUntilNextScanMs()
+            if (delayMs <= 0) {
+                // No delay needed, execute immediately
+                onReady()
+                return
+            }
+
+            PrinterConnectLogger.logDebug("Scan delayed by ${delayMs}ms due to scan limit")
+
+            val runnable = Runnable {
+                synchronized(this) {
+                    delayedScanRunnable = null
+                }
+                onReady()
+            }
+
+            delayedScanRunnable = runnable
+            delayedScanHandler.postDelayed(runnable, delayMs)
+        }
+    }
+
+    @Synchronized
     private fun cleanupOldRecords(now: Long) {
         val cutoffTime = now - scanWindowMs
         scanHistory.removeAll { it.startTimeMs < cutoffTime }

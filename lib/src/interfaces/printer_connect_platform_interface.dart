@@ -6,8 +6,6 @@ import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:printer_connect/src/printer_connect.g.dart'
     hide
         AndroidOptions,
-        AppleConnectionOptions,
-        ConnectionPlatformConfig,
         BleConnectionParametersUpdated,
         CharacteristicProperty;
 import 'package:printer_connect/src/printer_connect.g.dart' as pigeon
@@ -236,14 +234,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       UniversalScanFilter(
         withServices: filter.withServices,
         withNamePrefix: filter.withNamePrefix,
-        withManufacturerData: filter.withManufacturerData
-            ?.map((m) => ManufacturerDataFilter(
-                  companyIdentifier: m.companyId,
-                  payloadPrefix: m.payload,
-                  payloadMask: m.mask,
-                ))
-            .toList() ??
-        [],
+        withManufacturerData: filter.withManufacturerData,
       ),
     ];
   }
@@ -254,11 +245,11 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
     return pigeon.AndroidOptions(
       requestLocationPermission: androidConfig.requestLocationPermission,
-      scanMode: AndroidScanMode.values[androidConfig.scanMode],
+      scanMode: androidConfig.scanMode,
       reportDelayMillis: androidConfig.reportDelayMillis,
       callbackType: androidConfig.callbackType,
-      matchMode: AndroidScanMatchMode.values[androidConfig.matchMode],
-      numOfMatches: AndroidScanNumOfMatches.values[androidConfig.numOfMatches],
+      matchMode: androidConfig.matchMode,
+      numOfMatches: androidConfig.numOfMatches,
       legacy: androidConfig.legacy,
     );
   }
@@ -295,8 +286,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       rssi: result.rssi,
       manufacturerDataList: result.manufacturerDataList
               ?.map((m) => ManufacturerData(
-                    companyId: m.companyIdentifier,
-                    payload: Uint8List.fromList(m.data),
+                    m.companyIdentifier,
+                    Uint8List.fromList(m.data),
                   ))
               .toList() ??
           [],

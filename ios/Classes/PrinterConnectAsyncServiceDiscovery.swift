@@ -1,188 +1,208 @@
-import Foundation
 import CoreBluetooth
+import Foundation
 
-final class PrinterConnectAsyncServiceDiscovery {
-
-    private let logger = PrinterConnectLogger.shared
+/// Handles asynchronous service discovery for a BLE peripheral.
+/// Manages the complete discovery flow: services -> characteristics -> descriptors
+class PrinterConnectAsyncServiceDiscovery: NSObject {
     private let peripheral: CBPeripheral
     private let deviceId: String
     private let completion: (Result<[UniversalBleService], Error>) -> Void
-    private let withDescriptors: Bool
-
-    private var discoveredServices: [UniversalBleService] = []
-    private var serviceCharacteristicsMap: [String: [CBCharacteristic]] = [:]
-
-    private var totalServicesExpected: Int = 0
-    private var servicesWithCharacteristicsDiscovered: Int = 0
-    private var characteristicsDiscovered: Int = 0
-    private var descriptorsDiscovered: Int = 0
-    private var totalCharacteristicsExpected: Int = 0
-    private var totalDescriptorsExpected: Int = 0
-
-    private var allServicesReady: Bool = false
+    private var discoveredServicesProgressMap: [UniversalBleService] = []
+    private var discoveredDescriptorsSet: Set<String> = []
+    private var expectedCharacteristicsCountMap: [String: Int] = [:]
+    private var isDiscoveryInProgress = false
+    private var withDescriptors: Bool
 
     init(peripheral: CBPeripheral, deviceId: String, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], Error>) -> Void) {
         self.peripheral = peripheral
         self.deviceId = deviceId
-        self.withDescriptors = withDescriptors
         self.completion = completion
+        self.withDescriptors = withDescriptors
+        super.init()
     }
 
+    /// Starts the service discovery process
     func startDiscovery() {
-        guard !allServicesReady else {
-            completion(.success(discoveredServices))
+        guard !isDiscoveryInProgress else {
+            PrinterConnectLogger.shared.logWarning("Service discovery already in progress for device: \(deviceId)")
             return
         }
-
-        peripheral.delegate = self
-        peripheral.discoverServices(nil)
+        isDiscoveryInProgress = true
+        // Check if services are already cached
+        if let cachedServices = peripheral.services, !cachedServices.isEmpty {
+            handleServicesDiscovered(cachedServices)
+        } else {
+            peripheral.discoverServices(nil)
+        }
     }
 
+    /// Cleans up discovery state
     func cleanup() {
-        discoveredServices.removeAll()
-        serviceCharacteristicsMap.removeAll()
-        totalServicesExpected = 0
-        servicesWithCharacteristicsDiscovered = 0
-        characteristicsDiscovered = 0
-        descriptorsDiscovered = 0
-        totalCharacteristicsExpected = 0
-        totalDescriptorsExpected = 0
-        allServicesReady = false
+        isDiscoveryInProgress = false
+        discoveredServicesProgressMap.removeAll()
+        discoveredDescriptorsSet.removeAll()
+        expectedCharacteristicsCountMap.removeAll()
     }
 
-    func handleDidDiscoverServices(_ peripheral: CBPeripheral, error: Error?) {
-        if let error = error {
-            logger.logError("Error discovering services: \(error.localizedDescription)")
-            completion(.failure(error))
-            cleanup()
+    private func handleServicesDiscovered(_ services: [CBService]) {
+        discoveredServicesProgressMap = services.map { UniversalBleService(uuid: $0.uuid.uuidString, characteristics: nil) }
+        discoveredDescriptorsSet = Set<String>()
+        expectedCharacteristicsCountMap = [:]
+
+        // If no services, complete discovery immediately
+        guard !services.isEmpty else {
+            checkForDiscoveryCompletion()
             return
         }
 
-        guard let services = peripheral.services else {
-            completion(.failure(createFlutterError(
-                code: "discoverServicesError",
-                message: "No services found"
-            )))
-            cleanup()
-            return
-        }
-
-        totalServicesExpected = services.count
-        servicesWithCharacteristicsDiscovered = 0
-        characteristicsDiscovered = 0
-        descriptorsDiscovered = 0
-        totalCharacteristicsExpected = 0
-        totalDescriptorsExpected = 0
-
+        // Discover characteristics for each service
         for service in services {
-            let bleService = UniversalBleService(
-                uuid: service.uuid.uuidString,
-                characteristics: nil
-            )
-            discoveredServices.append(bleService)
-            serviceCharacteristicsMap[service.uuid.uuidString] = []
-
-            peripheral.discoverCharacteristics(nil, for: service)
+            if let cachedChar = service.characteristics, !cachedChar.isEmpty {
+                // Characteristics already cached, process them
+                processCharacteristicsForService(service)
+            } else {
+                // Need to discover characteristics
+                peripheral.discoverCharacteristics(nil, for: service)
+            }
         }
     }
 
-    func handleDidDiscoverCharacteristicsFor(_ peripheral: CBPeripheral, service: CBService, error: Error?) {
-        if let error = error {
-            logger.logError("Error discovering characteristics: \(error.localizedDescription)")
-            completion(.failure(error))
-            cleanup()
+    private func processCharacteristicsForService(_ service: CBService) {
+        let serviceUuid = service.uuid.uuidString
+        guard let characteristics = service.characteristics else {
+            // Service has no characteristics, mark as complete
+            expectedCharacteristicsCountMap[serviceUuid] = 0
+            if let index = discoveredServicesProgressMap.firstIndex(where: { $0.uuid == serviceUuid }) {
+                discoveredServicesProgressMap[index] = UniversalBleService(uuid: serviceUuid, characteristics: [])
+            }
+            checkForDiscoveryCompletion()
             return
         }
 
-        let characteristicsList = service.characteristics ?? []
-        serviceCharacteristicsMap[service.uuid.uuidString] = characteristicsList
+        // Store expected characteristic count for this service
+        expectedCharacteristicsCountMap[serviceUuid] = characteristics.count
 
-        characteristicsDiscovered += characteristicsList.count
-        servicesWithCharacteristicsDiscovered += 1
+        // If no characteristics, mark service as complete
+        if characteristics.isEmpty {
+            if let index = discoveredServicesProgressMap.firstIndex(where: { $0.uuid == serviceUuid }) {
+                discoveredServicesProgressMap[index] = UniversalBleService(uuid: serviceUuid, characteristics: [])
+            }
+            checkForDiscoveryCompletion()
+            return
+        }
 
         if withDescriptors {
-            for characteristic in characteristicsList {
-                peripheral.discoverDescriptors(for: characteristic)
-            }
-        }
-
-        updateExpectedCounts()
-        checkForDiscoveryCompletion()
-    }
-
-    func handleDidDiscoverDescriptorsFor(_ peripheral: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {
-        if let error = error {
-            descriptorsDiscovered += 1
-            logger.logError("Descriptor discovery error: \(error.localizedDescription)")
-        } else if let descriptors = characteristic.descriptors {
-            descriptorsDiscovered += descriptors.count
-        } else {
-            descriptorsDiscovered += 1
-        }
-
-        updateExpectedCounts()
-        checkForDiscoveryCompletion()
-    }
-
-    private func updateExpectedCounts() {
-        var totalChars = 0
-        var totalDescs = 0
-
-        for (_, characteristics) in serviceCharacteristicsMap {
-            totalChars += characteristics.count
-            if withDescriptors {
-                for characteristic in characteristics {
-                    if let descriptors = characteristic.descriptors {
-                        totalDescs += descriptors.count
-                    }
+            for characteristic in characteristics {
+                if let cachedDescriptors = characteristic.descriptors, !cachedDescriptors.isEmpty {
+                    handleDescriptorsDiscovered(for: characteristic)
+                } else {
+                    peripheral.discoverDescriptors(for: characteristic)
                 }
             }
-        }
-
-        totalCharacteristicsExpected = totalChars
-        totalDescriptorsExpected = withDescriptors ? totalDescs : 0
-    }
-
-    private func checkForDiscoveryCompletion() {
-        let allServicesDiscovered = servicesWithCharacteristicsDiscovered >= totalServicesExpected
-        let allCharacteristicsDiscovered = characteristicsDiscovered >= totalCharacteristicsExpected
-        let allDescriptorsDiscovered = withDescriptors ? (descriptorsDiscovered >= totalDescriptorsExpected) : true
-
-        if allServicesDiscovered && allCharacteristicsDiscovered && allDescriptorsDiscovered {
-            allServicesReady = true
-            let result = buildResultServices()
-            completion(.success(result))
-            cleanup()
-        }
-    }
-
-    private func buildResultServices() -> [UniversalBleService] {
-        var result: [UniversalBleService] = []
-
-        for service in discoveredServices {
-            guard let characteristics = serviceCharacteristicsMap[service.uuid] else {
-                result.append(service)
-                continue
+        } else {
+            if let index = discoveredServicesProgressMap.firstIndex(where: { $0.uuid == serviceUuid }) {
+                discoveredServicesProgressMap[index] = UniversalBleService(
+                    uuid: serviceUuid,
+                    characteristics: characteristics.map {
+                        UniversalBleCharacteristic(
+                            uuid: $0.uuid.uuidString,
+                            properties: $0.properties.toCharacteristicProperty,
+                            descriptors: []
+                        )
+                    }
+                )
             }
+            checkForDiscoveryCompletion()
+        }
+    }
 
-            let bleCharacteristics = characteristics.map { char in
-                let descriptors = (withDescriptors ? (char.descriptors ?? []).map { desc in
-                    UniversalBleDescriptor(uuid: desc.uuid.uuidString)
-                } : [])
+    private func handleDescriptorsDiscovered(for characteristic: CBCharacteristic) {
+        guard let service = characteristic.service else {
+            return
+        }
+        let serviceUuid = service.uuid.uuidString
+        let characteristicUuid = characteristic.uuid.uuidString
+        let characteristicKey = "\(serviceUuid):\(characteristicUuid)"
 
-                return UniversalBleCharacteristic(
-                    uuid: char.uuid.uuidString,
-                    properties: char.properties.toCharacteristicProperty,
-                    descriptors: descriptors
+        // Mark this characteristic's descriptors as discovered
+        discoveredDescriptorsSet.insert(characteristicKey)
+
+        // Get expected characteristic count for this service
+        guard let expectedCount = expectedCharacteristicsCountMap[serviceUuid] else {
+            return
+        }
+
+        // Check if all characteristics for this service have had their descriptors discovered
+        guard let allCharacteristics = service.characteristics else {
+            return
+        }
+
+        let discoveredCount = allCharacteristics.filter { char in
+            let key = "\(serviceUuid):\(char.uuid.uuidString)"
+            return discoveredDescriptorsSet.contains(key)
+        }.count
+
+        // Only update the service when all characteristics have descriptors discovered
+        if discoveredCount == expectedCount {
+            var universalBleCharacteristicsList: [UniversalBleCharacteristic] = []
+            for characteristic in allCharacteristics {
+                universalBleCharacteristicsList.append(
+                    UniversalBleCharacteristic(
+                        uuid: characteristic.uuid.uuidString,
+                        properties: characteristic.properties.toCharacteristicProperty,
+                        descriptors: (characteristic.descriptors ?? []).map { UniversalBleDescriptor(uuid: $0.uuid.uuidString) }
+                    )
                 )
             }
 
-            result.append(UniversalBleService(
-                uuid: service.uuid,
-                characteristics: bleCharacteristics
-            ))
+            if let index = discoveredServicesProgressMap.firstIndex(where: { $0.uuid == serviceUuid }) {
+                discoveredServicesProgressMap[index] = UniversalBleService(uuid: serviceUuid, characteristics: universalBleCharacteristicsList)
+            }
+            checkForDiscoveryCompletion()
         }
+    }
 
-        return result
+    private func checkForDiscoveryCompletion() {
+        // Check if all services have been fully discovered (all characteristics with all descriptors)
+        guard discoveredServicesProgressMap.allSatisfy({ $0.characteristics != nil }) else {
+            return
+        }
+        completion(.success(discoveredServicesProgressMap))
+        cleanup()
+    }
+}
+
+// These methods are called by the main plugin class when it receives delegate callbacks
+extension PrinterConnectAsyncServiceDiscovery {
+    func handleDidDiscoverServices(_ peripheral: CBPeripheral, error: Error?) {
+        guard error == nil else {
+            completion(.failure(error!))
+            cleanup()
+            return
+        }
+        guard let services = peripheral.services else {
+            completion(.success([]))
+            cleanup()
+            return
+        }
+        handleServicesDiscovered(services)
+    }
+
+    func handleDidDiscoverCharacteristicsFor(_: CBPeripheral, service: CBService, error: Error?) {
+        guard error == nil else {
+            completion(.failure(error!))
+            cleanup()
+            return
+        }
+        processCharacteristicsForService(service)
+    }
+
+    func handleDidDiscoverDescriptorsFor(_: CBPeripheral, characteristic: CBCharacteristic, error: Error?) {
+        guard error == nil else {
+            completion(.failure(error!))
+            cleanup()
+            return
+        }
+        handleDescriptorsDiscovered(for: characteristic)
     }
 }

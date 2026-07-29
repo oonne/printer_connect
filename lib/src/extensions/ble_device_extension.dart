@@ -1,4 +1,5 @@
 import 'package:printer_connect/printer_connect.dart';
+import 'package:printer_connect/src/printer_connect.g.dart';
 
 extension BleDeviceExtension on BleDevice {
   Stream<bool> get connectionStream =>

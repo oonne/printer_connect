@@ -42,7 +42,7 @@ final class PrinterConnectLogger {
     }
 
     private func allows(_ level: BleLogLevel) -> Bool {
-        return currentLogLevel != .none && level.rawValue >= currentLogLevel.rawValue
+        return currentLogLevel != .none && level.rawValue <= currentLogLevel.rawValue
     }
 
     private func withTimestamp(_ message: String) -> String {

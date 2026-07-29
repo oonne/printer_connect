@@ -1,61 +1,53 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
+import 'package:printer_connect/src/printer_connect.g.dart';
+
+/// Represents the manufacturer data of a BLE device.
 class ManufacturerData {
   final int companyId;
   final Uint8List payload;
-  final Uint8List? mask;
 
-  const ManufacturerData({
-    required this.companyId,
-    required this.payload,
-    this.mask,
-  });
+  ManufacturerData(this.companyId, this.payload);
 
-  factory ManufacturerData.fromData(int companyId, Uint8List data,
-      [Uint8List? mask]) {
-    return ManufacturerData(
-      companyId: companyId,
-      payload: data,
-      mask: mask,
+  String get companyIdRadix16 => "0x0${companyId.toRadixString(16)}";
+
+  String get payloadRadix16 =>
+      "0x${payload.map((e) => e.toRadixString(16).toUpperCase().padLeft(2, '0')).join('')}";
+
+  factory ManufacturerData.fromData(Uint8List data) {
+    if (data.length < 2) {
+      throw const FormatException("Invalid Manufacturer Data");
+    }
+    return ManufacturerData((data[0] + (data[1] << 8)), data.sublist(2));
+  }
+
+  Uint8List toUint8List() {
+    final byteData = ByteData(2);
+    byteData.setInt16(0, companyId, Endian.host);
+    return Uint8List.fromList(byteData.buffer.asUint8List() + payload.toList());
+  }
+
+  @override
+  int get hashCode => companyId.hashCode ^ payload.hashCode;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! ManufacturerData) return false;
+    return companyId == other.companyId && listEquals(payload, other.payload);
+  }
+
+  UniversalManufacturerData toUniversalManufacturerData() {
+    return UniversalManufacturerData(
+      companyIdentifier: companyId,
+      data: payload,
     );
   }
 
-  Uint8List toUint8List() => payload;
-
-  Map<String, dynamic> toUniversalManufacturerData() {
-    return {
-      'companyId': companyId,
-      'data': payload,
-      'mask': mask,
-    };
+  @override
+  String toString() {
+    return 'Manufacturer: $companyIdRadix16 - $payload';
   }
-
-  String get companyIdRadix16 => companyId.toRadixString(16).padLeft(4, '0').toUpperCase();
-
-  String get payloadRadix16 =>
-      payload.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase())
-          .join();
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is ManufacturerData &&
-          runtimeType == other.runtimeType &&
-          companyId == other.companyId &&
-          _listEquals(payload, other.payload);
-
-  @override
-  int get hashCode => Object.hash(companyId, payload);
-
-  bool _listEquals(Uint8List a, Uint8List b) {
-    if (a.length != b.length) return false;
-    for (int i = 0; i < a.length; i++) {
-      if (a[i] != b[i]) return false;
-    }
-    return true;
-  }
-
-  @override
-  String toString() =>
-      'ManufacturerData(companyId: $companyId, payload: ${payload.length} bytes)';
 }

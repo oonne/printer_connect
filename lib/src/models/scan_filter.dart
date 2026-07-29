@@ -1,47 +1,37 @@
-import 'manufacturer_data.dart';
+import 'package:printer_connect/src/printer_connect.g.dart';
 
 class ScanFilter {
-  final List<String> withServices;
-  final List<ManufacturerData>? withManufacturerData;
-  final String? withLocalName;
-  final List<String> withNamePrefix;
-  final List<String>? withDeviceId;
-  final List<ScanFilter>? exclusionFilters;
+  List<String> withServices;
+  List<ManufacturerDataFilter> withManufacturerData;
+  List<String> withNamePrefix;
+  List<ExclusionFilter> exclusionFilters;
 
-  const ScanFilter({
+  ScanFilter({
     this.withServices = const [],
-    this.withManufacturerData,
-    this.withLocalName,
+    this.withManufacturerData = const [],
     this.withNamePrefix = const [],
-    this.withDeviceId,
-    this.exclusionFilters,
+    this.exclusionFilters = const [],
   });
 
-  bool get hasValidFilters =>
-      withServices.isNotEmpty ||
-      withManufacturerData != null ||
-      withLocalName != null ||
-      withNamePrefix.isNotEmpty ||
-      withDeviceId != null ||
-      exclusionFilters != null;
-
   @override
-  String toString() =>
-      'ScanFilter(withServices: ${withServices.length}, withManufacturerData: ${withManufacturerData?.length ?? 0}, withLocalName: $withLocalName, withNamePrefix: ${withNamePrefix.length}, withDeviceId: ${withDeviceId?.length ?? 0}, exclusionFilters: ${exclusionFilters?.length ?? 0})';
+  String toString() {
+    return 'ScanFilter(withServices: $withServices, withManufacturerData: $withManufacturerData, withNamePrefix: $withNamePrefix, exclusionFilters: $exclusionFilters)';
+  }
 }
 
 class ExclusionFilter {
-  final List<String>? services;
-  final List<String>? namePrefix;
-  final List<ManufacturerData>? manufacturerDataFilter;
+  List<String> services;
+  List<ManufacturerDataFilter> manufacturerDataFilter;
+  String? namePrefix;
 
-  const ExclusionFilter({
-    this.services,
+  ExclusionFilter({
+    this.services = const [],
+    this.manufacturerDataFilter = const [],
     this.namePrefix,
-    this.manufacturerDataFilter,
   });
 
-  @override
-  String toString() =>
-      'ExclusionFilter(services: ${services?.length ?? 0}, namePrefix: ${namePrefix?.length ?? 0}, manufacturerDataFilter: ${manufacturerDataFilter?.length ?? 0})';
+  bool get hasValidFilters =>
+      services.isNotEmpty ||
+      manufacturerDataFilter.isNotEmpty ||
+      (namePrefix?.isNotEmpty ?? false);
 }

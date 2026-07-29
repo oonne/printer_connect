@@ -1,110 +1,76 @@
-import 'dart:async';
-
 import 'package:printer_connect/src/models/model_exports.dart';
 
 import 'ble_typedefs.dart';
 import 'queue.dart';
 
+/// Set queue type and queue commands
 class BleCommandQueue {
+  QueueType queueType;
+  Duration? timeout = const Duration(seconds: 10);
+  OnQueueUpdate? onQueueUpdate;
+  final Map<String, Queue> _queueMap = {};
   static const String globalQueueId = 'global';
 
-  QueueType queueType;
-  final Duration? timeout;
-  final OnQueueUpdate? onQueueUpdate;
-
-  final Map<String, Queue<dynamic>> _queueMap = {};
-
-  BleCommandQueue({
-    this.queueType = QueueType.global,
-    this.timeout = const Duration(seconds: 10),
-    this.onQueueUpdate,
-  });
-
-  Queue<dynamic> _queue(String? id) {
-    switch (queueType) {
-      case QueueType.global:
-        return _queueMap.putIfAbsent(globalQueueId, () {
-          final queue = Queue<dynamic>(
-            onRemainingItemsUpdate: (remaining) {
-              onQueueUpdate?.call(globalQueueId, remaining);
-            },
-          );
-          return queue;
-        });
-      case QueueType.perDevice:
-        final key = (id == null || id.isEmpty) ? globalQueueId : id;
-        return _queueMap.putIfAbsent(key, () {
-          final queue = Queue<dynamic>(
-            onRemainingItemsUpdate: (remaining) {
-              onQueueUpdate?.call(key, remaining);
-            },
-          );
-          return queue;
-        });
-      case QueueType.none:
-        return _queueMap.putIfAbsent(globalQueueId, () {
-          final queue = Queue<dynamic>(
-            onRemainingItemsUpdate: (remaining) {
-              onQueueUpdate?.call(globalQueueId, remaining);
-            },
-          );
-          return queue;
-        });
-    }
-  }
+  BleCommandQueue({this.queueType = QueueType.global});
 
   Future<T> queueCommand<T>(
-    Future<T> Function() task, {
+    Future<T> Function() command, {
     String? deviceId,
     Duration? timeout,
+    String? queueId,
   }) {
-    switch (queueType) {
-      case QueueType.none:
-        return task();
-      case QueueType.global:
-        return _queue(globalQueueId).add(task, timeout: timeout ?? this.timeout)
-            as Future<T>;
-      case QueueType.perDevice:
-        final queue = _queue(deviceId);
-        return queue.add(task, timeout: timeout ?? this.timeout) as Future<T>;
+    Duration? timeoutDuration = timeout ?? this.timeout;
+    if (timeoutDuration == null) {
+      return queueCommandWithoutTimeout(
+        command,
+        deviceId: deviceId,
+        queueId: queueId,
+      );
     }
+    return switch (queueType) {
+      QueueType.global => _queue(queueId).add(command, timeoutDuration),
+      QueueType.perDevice => _queue(
+        queueId ?? deviceId,
+      ).add(command, timeoutDuration),
+      QueueType.none => command().timeout(timeoutDuration),
+    };
   }
 
   Future<T> queueCommandWithoutTimeout<T>(
-    Future<T> Function() task, {
+    Future<T> Function() command, {
     String? deviceId,
+    String? queueId,
   }) {
-    switch (queueType) {
-      case QueueType.none:
-        return task();
-      case QueueType.global:
-        return _queue(globalQueueId).add(task) as Future<T>;
-      case QueueType.perDevice:
-        final queue = _queue(deviceId);
-        return queue.add(task) as Future<T>;
+    return switch (queueType) {
+      QueueType.global => _queue(queueId).add(command),
+      QueueType.perDevice => _queue(queueId ?? deviceId).add(command),
+      QueueType.none => command(),
+    };
+  }
+
+  Queue _queue(String? id) {
+    final queueKey = id ?? globalQueueId;
+    return _queueMap[queueKey] ?? _newQueue(queueKey);
+  }
+
+  Queue _newQueue(String id) {
+    final queue = Queue();
+    queue.onRemainingItemsUpdate = (int items) {
+      try {
+        onQueueUpdate?.call(id, items);
+      } catch (_) {}
+    };
+    _queueMap[id] = queue;
+    return queue;
+  }
+
+  void clearQueue(String? id) {
+    if (id == null) {
+      _queueMap.forEach((k, v) => v.dispose());
+      _queueMap.clear();
+    } else {
+      _queueMap[id]?.dispose();
+      _queueMap.remove(id);
     }
-  }
-
-  int getGlobalQueueRemainingItems() {
-    return _queueMap[globalQueueId]?.totalRemainingItems ?? 0;
-  }
-
-  int getDeviceQueueRemainingItems(String deviceId) {
-    return _queueMap[deviceId]?.totalRemainingItems ?? 0;
-  }
-
-  void clearQueue({String? deviceId}) {
-    final key = deviceId ?? globalQueueId;
-    final queue = _queueMap[key];
-    if (queue != null) {
-      queue.clear();
-    }
-  }
-
-  void dispose() {
-    for (final queue in _queueMap.values) {
-      queue.dispose();
-    }
-    _queueMap.clear();
   }
 }
