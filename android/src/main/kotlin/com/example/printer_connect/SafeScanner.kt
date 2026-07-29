@@ -1,114 +1,80 @@
 package com.example.printer_connect
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanSettings
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import java.util.LinkedList
 
+private const val NUM_SCAN_DURATIONS_KEPT = 5
+private const val EXCESSIVE_SCANNING_PERIOD_MS = 30 * 1000L
+
 /**
- * Manages safe scan operations by limiting the number of concurrent scans
- * within a time window to prevent Bluetooth adapter issues.
+ * A safe wrapper for Bluetooth LE scanning operations that prevents excessive scanning.
+ *
+ * This class manages BLE scanning while adhering to Android's scanning frequency limits by:
+ * - Tracking scan start times over a 30-second window
+ * - Limiting to 5 scan operations within this window
+ * - Automatically scheduling delayed scans when frequency limits are exceeded
+ * - Providing safe start/stop scan operations with error handling
+ *
+ * The scanner will automatically delay new scan requests if the frequency limit is reached,
+ * and will retry once sufficient time has passed. This helps prevent scan failure errors
+ * and ensures compliance with Android's scanning restrictions.
  */
-class SafeScanner {
+@SuppressLint("MissingPermission")
+class SafeScanner(private val bluetoothManager: BluetoothManager) {
 
-    private data class ScanRecord(val startTimeMs: Long)
+    private val handler = Handler(Looper.myLooper()!!)
+    private val startTimes = LinkedList<Long>()
+    private var awaitingScan = false
+    private var isScanning = false
 
-    private val scanHistory = LinkedList<ScanRecord>()
-    private val maxScanRecords = 5
-    private val scanWindowMs = 30_000L
+    fun startScan(filters: List<ScanFilter>, settings: ScanSettings, callback: ScanCallback) {
+        val now = System.currentTimeMillis()
+        startTimes.removeAll { now - it > EXCESSIVE_SCANNING_PERIOD_MS }
 
-    private val delayedScanHandler = Handler(Looper.getMainLooper())
-    private var delayedScanRunnable: Runnable? = null
-
-    @Synchronized
-    fun canStartScan(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        cleanupOldRecords(now)
-        return scanHistory.size < maxScanRecords
-    }
-
-    @Synchronized
-    fun recordScanStart(): Boolean {
-        val now = SystemClock.elapsedRealtime()
-        cleanupOldRecords(now)
-        if (scanHistory.size >= maxScanRecords) {
-            return false
-        }
-        scanHistory.add(ScanRecord(now))
-        PrinterConnectLogger.logDebug("Scan started. Active scans: ${scanHistory.size}/$maxScanRecords")
-        return true
-    }
-
-    @Synchronized
-    fun getScansRemaining(): Int {
-        val now = SystemClock.elapsedRealtime()
-        cleanupOldRecords(now)
-        return (maxScanRecords - scanHistory.size).coerceAtLeast(0)
-    }
-
-    @Synchronized
-    fun getTimeUntilNextScanMs(): Long {
-        if (scanHistory.isEmpty()) return 0L
-        val now = SystemClock.elapsedRealtime()
-        cleanupOldRecords(now)
-        if (scanHistory.size < maxScanRecords) return 0L
-        val oldest = scanHistory.minByOrNull { it.startTimeMs } ?: return 0L
-        val timeRemaining = (oldest.startTimeMs + scanWindowMs) - now
-        return timeRemaining.coerceAtLeast(0L)
-    }
-
-    @Synchronized
-    fun reset() {
-        scanHistory.clear()
-        delayedScanRunnable?.let { delayedScanHandler.removeCallbacks(it) }
-        delayedScanRunnable = null
-        PrinterConnectLogger.logDebug("SafeScanner reset")
-    }
-
-    /**
-     * Schedules a scan to start after the cooldown period has elapsed.
-     * @param onReady The callback to execute when the scan can start
-     */
-    fun scheduleScanStart(onReady: () -> Unit) {
-        synchronized(this) {
-            // Remove any previously scheduled delayed runnable
-            delayedScanRunnable?.let { delayedScanHandler.removeCallbacks(it) }
-
-            val delayMs = getTimeUntilNextScanMs()
-            if (delayMs <= 0) {
-                // No delay needed, execute immediately
-                onReady()
+        if (startTimes.size >= NUM_SCAN_DURATIONS_KEPT) {
+            if (awaitingScan) {
+                PrinterConnectLogger.logError("startScan: too frequent, awaiting scan..")
                 return
             }
-
-            PrinterConnectLogger.logDebug("Scan delayed by ${delayMs}ms due to scan limit")
-
-            val runnable = Runnable {
-                synchronized(this) {
-                    delayedScanRunnable = null
-                }
-                onReady()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                callback.onScanFailed(ScanCallback.SCAN_FAILED_SCANNING_TOO_FREQUENTLY)
             }
-
-            delayedScanRunnable = runnable
-            delayedScanHandler.postDelayed(runnable, delayMs)
+            awaitingScan = true
+            val delay = startTimes.first() + EXCESSIVE_SCANNING_PERIOD_MS - now + 2_000
+            PrinterConnectLogger.logDebug("startScan: too frequent, schedule auto-start after $delay ms $startTimes")
+            handler.postDelayed({
+                PrinterConnectLogger.logDebug("Retrying scan after delay")
+                awaitingScan = false
+                startScan(filters, settings, callback)
+            }, delay)
+        } else {
+            awaitingScan = false
+            startTimes.addLast(now)
+            try {
+                bluetoothManager.adapter.bluetoothLeScanner?.startScan(filters, settings, callback)
+                isScanning = true
+            } catch (e: Exception) {
+                PrinterConnectLogger.logError("Failed to start Scan : $e")
+                isScanning = false
+            }
         }
     }
 
-    @Synchronized
-    private fun cleanupOldRecords(now: Long) {
-        val cutoffTime = now - scanWindowMs
-        scanHistory.removeAll { it.startTimeMs < cutoffTime }
+    fun stopScan(callback: ScanCallback) {
+        awaitingScan = false
+        handler.removeCallbacksAndMessages(null)
+        bluetoothManager.adapter.bluetoothLeScanner?.stopScan(callback)
+        isScanning = false
     }
 
-    companion object {
-        @Volatile
-        private var instance: SafeScanner? = null
-
-        fun getInstance(): SafeScanner {
-            return instance ?: synchronized(this) {
-                instance ?: SafeScanner().also { instance = it }
-            }
-        }
+    fun isScanning(): Boolean {
+        return isScanning || awaitingScan
     }
 }

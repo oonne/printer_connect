@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:printer_connect/src/printer_connect.g.dart'
+    show ConnectionPlatformConfig;
 import 'package:printer_connect/printer_connect.dart';
 
 class MockPrinterConnectPlatform extends PrinterConnectPlatform {
@@ -34,7 +36,8 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
 
   @override
   Future<void> connect(String deviceId,
-      {bool? autoConnect,
+      {bool autoConnect = false,
+      Duration? connectionTimeout,
       ConnectionPlatformConfig? platformConfig}) async {}
 
   @override
@@ -50,7 +53,7 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
 
   @override
   Future<Uint8List> readValue(String deviceId, String service,
-      String characteristic) async => Uint8List(0);
+      String characteristic, {Duration? timeout}) async => Uint8List(0);
 
   @override
   Future<void> writeValue(String deviceId, String service,
@@ -77,12 +80,12 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
   Future<void> unpair(String deviceId) async {}
 
   @override
-  BleConnectionState getConnectionState(String deviceId) =>
+  Future<BleConnectionState> getConnectionState(String deviceId) async =>
       BleConnectionState.disconnected;
 
   @override
   Future<List<BleDevice>> getSystemDevices(
-      List<String> withServices) async => [];
+      List<String>? withServices) async => [];
 
   @override
   Future<void> setLogLevel(BleLogLevel logLevel) async {}

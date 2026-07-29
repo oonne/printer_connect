@@ -1,5 +1,10 @@
-import Foundation
+//
+//  PrinterConnectHelper.swift
+//  printer_connect
+//
+
 import CoreBluetooth
+import Foundation
 
 #if os(iOS)
 import Flutter
@@ -23,7 +28,7 @@ extension CBCharacteristicProperties {
 }
 
 extension CBManagerState {
-    var toAvailabilityState: AvailabilityState {
+    func toAvailabilityState() -> AvailabilityState {
         switch self {
         case .unknown: return .unknown
         case .resetting: return .resetting
@@ -36,127 +41,117 @@ extension CBManagerState {
     }
 }
 
-func mapErrorCodeToEnum(_ error: Error) -> String {
-    let nsError = error as NSError
-    switch nsError.code {
-    case CBError.Code.unknown.rawValue: return "unknown"
-    case CBError.Code.invalidParameter.rawValue: return "invalidParameter"
-    case CBError.Code.invalidHandle.rawValue: return "invalidHandle"
-    case CBError.Code.notConnected.rawValue: return "notConnected"
-    case CBError.Code.outOfSpace.rawValue: return "outOfSpace"
-    case CBError.Code.operationCancelled.rawValue: return "operationCancelled"
-    case CBError.Code.operationTimedOut.rawValue: return "operationTimedOut"
-    case CBError.Code.operationDisconnected.rawValue: return "operationDisconnected"
-    case CBError.Code.notFound.rawValue: return "notFound"
-    case CBError.Code.notLongConnected.rawValue: return "notLongConnected"
-    case CBError.Code.uncachedError.rawValue: return "uncachedError"
-    case CBError.Code.attRequestNotSupported.rawValue: return "attRequestNotSupported"
-    case CBError.Code.invalidOffset.rawValue: return "invalidOffset"
-    case CBError.Code.invalidLength.rawValue: return "invalidLength"
-    case CBError.Code.invalidValue.rawValue: return "invalidValue"
-    case CBError.Code.insufficientEncryption.rawValue: return "insufficientEncryption"
-    default: return "unknownError_\(nsError.code)"
+/// Maps string error codes to UniversalBleErrorCode enum
+func mapErrorCodeToEnum(_ code: String) -> UniversalBleErrorCode {
+    switch code.lowercased() {
+    case "notsupported", "not_supported":
+        return .notSupported
+    case "notimplemented", "not_implemented":
+        return .notImplemented
+    case "channel-error", "channelerror":
+        return .channelError
+    case "failed":
+        return .failed
+    case "devicedisconnected", "device_disconnected":
+        return .deviceDisconnected
+    case "illegalargument", "illegal_argument":
+        return .illegalArgument
+    case "invalidaction", "invalid_action":
+        return .invalidAction
+    case "readfailed", "read_failed":
+        return .readFailed
+    case "devicenotfound", "device_not_found":
+        return .deviceNotFound
+    case "servicenotfound", "service_not_found":
+        return .serviceNotFound
+    case "characteristicnotfound", "characteristic_not_found":
+        return .characteristicNotFound
+    case "invalidserviceuuid", "invalid_service_uuid":
+        return .invalidServiceUuid
+    case "characteristicdoesnotsupportread":
+        return .characteristicDoesNotSupportRead
+    case "characteristicdoesnotsupportwrite":
+        return .characteristicDoesNotSupportWrite
+    case "characteristicdoesnotsupportwritewithoutresponse":
+        return .characteristicDoesNotSupportWriteWithoutResponse
+    case "characteristicdoesnotsupportnotify":
+        return .characteristicDoesNotSupportNotify
+    case "characteristicdoesnotsupportindicate":
+        return .characteristicDoesNotSupportIndicate
+    default:
+        return .unknownError
     }
 }
 
-func createFlutterError(code: String, message: String?, details: Any? = nil) -> PigeonError {
-    return PigeonError(code: code, message: message, details: details)
+/// Creates a PigeonError with the error code enum in details
+func createFlutterError(
+    code: UniversalBleErrorCode,
+    message: String? = nil,
+    details: String? = nil
+) -> PigeonError {
+    // Pass the enum's rawValue (Int) in code as string, and enum name in details
+    return PigeonError(
+        code: code.rawValue.description,
+        message: message,
+        details: details ?? code.rawValue
+    )
 }
 
 extension Error {
-    func toPigeonError() -> PigeonError {
+    func toFlutterError() -> PigeonError {
         let nsError = self as NSError
-        return PigeonError(
-            code: mapErrorCodeToEnum(self),
-            message: nsError.localizedDescription,
-            details: nsError.userInfo
-        )
+        let errorCode: String = .init(nsError.code)
+        let errorDescription: String = nsError.localizedDescription
+        let mappedCode = mapErrorCodeToEnum(errorCode)
+        return createFlutterError(code: mappedCode, message: errorDescription, details: errorCode)
     }
 }
 
-extension CBUUID {
+public extension CBUUID {
     var uuidStr: String {
-        return uuidString
+        uuidString.lowercased()
     }
 }
 
-extension CBPeripheral {
-    var uuid: String {
-        return identifier.uuidString
+public extension CBPeripheral {
+    // FIXME: https://forums.developer.apple.com/thread/84375
+    var uuid: UUID {
+        value(forKey: "identifier") as! NSUUID as UUID
     }
 
-    func getCharacteristic(uuid: CBUUID) -> CBCharacteristic? {
-        guard let services = services else { return nil }
-        for service in services {
-            if let characteristic = service.characteristics?.first(where: { $0.uuid == uuid }) {
-                return characteristic
-            }
+    func getCharacteristic(_ characteristic: String, of service: String) -> CBCharacteristic? {
+        let GSS_SUFFIX = "0000-1000-8000-00805f9b34fb"
+        let s = services?.first {
+            $0.uuid.uuidStr.lowercased() == service.lowercased() || service.lowercased() == "0000\($0.uuid.uuidStr)-\(GSS_SUFFIX)".lowercased()
         }
-        return nil
+        let c = s?.characteristics?.first {
+            $0.uuid.uuidStr.lowercased() == characteristic.lowercased() || characteristic.lowercased() == "0000\($0.uuid.uuidStr)-\(GSS_SUFFIX)".lowercased()
+        }
+        return c
     }
 
-    func getCharacteristic(_ characteristicUUID: String, of serviceUUID: String) -> CBCharacteristic? {
-        guard let services = services else { return nil }
-        for service in services {
-            if service.uuid.uuidString == serviceUUID {
-                return service.characteristics?.first(where: { $0.uuid.uuidString == characteristicUUID })
-            }
+    func setNotifiable(_ bleInputProperty: String, for characteristic: String, of service: String) {
+        guard let characteristic = getCharacteristic(characteristic, of: service) else {
+            return
         }
-        return nil
+        setNotifyValue(bleInputProperty != "disabled", for: characteristic)
     }
 }
 
-#if os(iOS)
 extension FlutterStandardTypedData {
     func toData() -> Data {
-        return data
-    }
-}
-#endif
-
-extension String {
-    func toData() -> Data {
-        return Data(Array(hexStringToBytes(self)))
-    }
-
-    private func hexStringToBytes(_ hexString: String) -> [UInt8] {
-        var bytes: [UInt8] = []
-        var index = hexString.startIndex
-        while index < hexString.endIndex {
-            let nextIndex = hexString.index(index, offsetBy: 2)
-            if nextIndex <= hexString.endIndex {
-                let byteString = String(hexString[index..<nextIndex])
-                if let byte = UInt8(byteString, radix: 16) {
-                    bytes.append(byte)
-                }
-            }
-            index = nextIndex
-        }
-        return bytes
+        return Data(data)
     }
 }
 
-extension Data {
-    func toData() -> Data {
-        return self
-    }
-
-    func toInt64List() -> [Int64] {
-        return map { Int64($0) }
-    }
-
-    init(int64List: [Int64]) {
-        self.init(bytes: int64List.map { UInt8($0 & 0xFF) })
-    }
-}
-
+// Future classes
 class CharacteristicReadFuture {
     let deviceId: String
     let characteristicId: String
-    let serviceId: String
+    let serviceId: String?
     let result: (Result<FlutterStandardTypedData, Error>) -> Void
 
-    init(deviceId: String, characteristicId: String, serviceId: String, result: @escaping (Result<FlutterStandardTypedData, Error>) -> Void) {
+    init(deviceId: String, characteristicId: String, serviceId: String?, result: @escaping (Result<FlutterStandardTypedData, Error>) -> Void) {
         self.deviceId = deviceId
         self.characteristicId = characteristicId
         self.serviceId = serviceId
@@ -167,10 +162,10 @@ class CharacteristicReadFuture {
 class CharacteristicWriteFuture {
     let deviceId: String
     let characteristicId: String
-    let serviceId: String
+    let serviceId: String?
     let result: (Result<Void, Error>) -> Void
 
-    init(deviceId: String, characteristicId: String, serviceId: String, result: @escaping (Result<Void, Error>) -> Void) {
+    init(deviceId: String, characteristicId: String, serviceId: String?, result: @escaping (Result<Void, Error>) -> Void) {
         self.deviceId = deviceId
         self.characteristicId = characteristicId
         self.serviceId = serviceId
@@ -181,10 +176,10 @@ class CharacteristicWriteFuture {
 class CharacteristicNotifyFuture {
     let deviceId: String
     let characteristicId: String
-    let serviceId: String
+    let serviceId: String?
     let result: (Result<Void, Error>) -> Void
 
-    init(deviceId: String, characteristicId: String, serviceId: String, result: @escaping (Result<Void, Error>) -> Void) {
+    init(deviceId: String, characteristicId: String, serviceId: String?, result: @escaping (Result<Void, Error>) -> Void) {
         self.deviceId = deviceId
         self.characteristicId = characteristicId
         self.serviceId = serviceId
@@ -213,20 +208,25 @@ class RssiReadFuture {
 }
 
 extension String {
-    func toCBUUID() -> CBUUID {
-        return CBUUID(string: self)
-    }
-
-    func findPeripheral(in manager: CBCentralManager) -> CBPeripheral? {
-        let peripherals = manager.retrievePeripherals(withIdentifiers: [self])
-        return peripherals.first
-    }
-
     func getPeripheral(manager: CBCentralManager) throws -> CBPeripheral {
-        guard let peripheral = findPeripheral(in: manager) else {
-            throw createFlutterError(code: "deviceNotFound", message: "Unknown deviceId:\(self)")
+        guard let peripheral = findPeripheral(manager: manager) else {
+            throw createFlutterError(code: .deviceNotFound, message: "Unknown deviceId:\(self)")
         }
         return peripheral
+    }
+
+    func findPeripheral(manager: CBCentralManager) -> CBPeripheral? {
+        if let peripheral = discoveredPeripherals[self] {
+            return peripheral
+        }
+        if let uuid = UUID(uuidString: self) {
+            let peripherals = manager.retrievePeripherals(withIdentifiers: [uuid])
+            if let peripheral = peripherals.first {
+                discoveredPeripherals[self] = peripheral
+                return peripheral
+            }
+        }
+        return nil
     }
 }
 
@@ -234,7 +234,7 @@ extension [String] {
     func toCBUUID() throws -> [CBUUID] {
         return try compactMap { serviceUUID in
             guard UUID(uuidString: serviceUUID) != nil else {
-                throw createFlutterError(code: "invalidServiceUuid", message: "Invalid service UUID:\(serviceUUID)")
+                throw createFlutterError(code: .invalidServiceUuid, message: "Invalid service UUID:\(serviceUUID)")
             }
             return CBUUID(string: serviceUUID)
         }

@@ -8,8 +8,8 @@ extension BleDeviceExtension on BleDevice {
   Stream<bool> get pairingStateStream =>
       PrinterConnect.pairingStateStream(deviceId);
 
-  bool get isConnected =>
-      PrinterConnect.getConnectionState(deviceId) ==
+  Future<bool> get isConnected async =>
+      await PrinterConnect.getConnectionState(deviceId) ==
       BleConnectionState.connected;
 
   Future<void> connect({

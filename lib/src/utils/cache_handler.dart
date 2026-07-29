@@ -7,7 +7,7 @@ class CacheHandler {
 
   final Map<String, List<BleService>> _servicesCache = {};
 
-  Future<void> saveServices(String deviceId, List<BleService> services) async {
+  void saveServices(String deviceId, List<BleService> services) {
     _servicesCache[deviceId.toLowerCase()] = List.unmodifiable(services);
   }
 

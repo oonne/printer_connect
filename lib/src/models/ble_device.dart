@@ -21,9 +21,10 @@ class BleDevice {
     this.services = const [],
     this.isSystemDevice,
     this.manufacturerDataList = const [],
-    this.serviceData = const {},
+    Map<String, Uint8List>? serviceData,
     this.timestamp,
-  }) : rawName = _cleanName(name);
+  })  : rawName = _cleanName(name),
+        serviceData = _validateServiceData(serviceData ?? const {});
 
   static String? _cleanName(String? name) {
     if (name == null) return null;

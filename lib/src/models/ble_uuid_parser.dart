@@ -1,105 +1,78 @@
-import 'dart:developer' as developer;
-
 class BleUuidParser {
-  static const String _baseSuffix = '-0000-1000-8000-00805F9B34FB';
+  BleUuidParser._();
 
+  /// Parse a string to a valid 128-bit UUID.
+  /// Throws `FormatException` if the string does not hold a valid UUID format.
   static String string(String uuid) {
-    if (uuid.isEmpty) {
-      throw ArgumentError('UUID cannot be empty');
+    uuid = uuid.trim();
+    if (uuid.length < 4) {
+      throw const FormatException('Invalid UUID');
     }
 
-    var trimmed = uuid.trim().toUpperCase();
-
-    if (trimmed.startsWith('0X')) {
-      trimmed = trimmed.substring(2);
+    if (uuid.startsWith('0x')) {
+      uuid = uuid.substring(2);
     }
 
-    if (trimmed.length == 36 && trimmed.contains('-')) {
-      if (_isValid128BitUuid(trimmed)) {
-        return trimmed;
-      }
-      throw ArgumentError('Invalid 128-bit UUID format: $uuid');
+    if (uuid.length <= 8) {
+      uuid = "${uuid.padLeft(8, '0')}-0000-1000-8000-00805f9b34fb";
     }
 
-    if (trimmed.length == 4) {
-      if (_isValid16BitUuid(trimmed)) {
-        return '0000$trimmed$_baseSuffix';
-      }
-      throw ArgumentError('Invalid 16-bit UUID format: $uuid');
+    if (!uuid.contains("-")) {
+      if (uuid.length != 32) throw const FormatException("Invalid UUID");
+
+      uuid = "${uuid.substring(0, 8)}-${uuid.substring(8, 12)}"
+          "-${uuid.substring(12, 16)}-${uuid.substring(16, 20)}-${uuid.substring(20, 32)}";
     }
 
-    if (trimmed.length == 8) {
-      if (_isValid32BitUuid(trimmed)) {
-        return '${trimmed.substring(0, 4)}${trimmed.substring(4)}$_baseSuffix';
-      }
-      throw ArgumentError('Invalid 32-bit UUID format: $uuid');
+    var groups = uuid.split('-');
+
+    if (groups.length != 5 ||
+        groups[0].length != 8 ||
+        groups[1].length != 4 ||
+        groups[2].length != 4 ||
+        groups[3].length != 4 ||
+        groups[4].length != 12) {
+      throw const FormatException('Invalid UUID');
     }
 
-    throw ArgumentError('Unsupported UUID format: $uuid. Expected 4, 8, or 32 characters.');
+    try {
+      int.parse(groups[0], radix: 16);
+      int.parse(groups[1], radix: 16);
+      int.parse(groups[2], radix: 16);
+      int.parse(groups[3], radix: 16);
+      int.parse(groups[4], radix: 16);
+    } catch (e) {
+      throw const FormatException('Invalid UUID');
+    }
+
+    return uuid.toLowerCase();
   }
 
+  /// Parse a string to a valid 128-bit UUID or return null if the string is null or invalid.
   static String? stringOrNull(String uuid) {
-    if (uuid.isEmpty) {
-      return null;
-    }
     try {
       return string(uuid);
     } catch (e) {
-      developer.log('Invalid UUID: $uuid', name: 'BleUuidParser');
       return null;
     }
   }
 
+  /// Parse an int number into a 128-bit UUID string.
+  /// e.g. `0x1800` to `00001800-0000-1000-8000-00805f9b34fb`.
   static String number(int short) {
-    if (short < 0 || short > 0xFFFF) {
-      throw ArgumentError('UUID number must be between 0 and 0xFFFF, got: $short');
+    if (short <= 0xFF || short > 0xFFFF) {
+      throw const FormatException('Invalid UUID');
     }
-    if (short <= 0xFF) {
-      final hex = short.toRadixString(16).padLeft(2, '0').toUpperCase();
-      return '000000$hex$_baseSuffix';
-    }
-    final hex = short.toRadixString(16).padLeft(4, '0').toUpperCase();
-    return '0000$hex$_baseSuffix';
+    return string(short.toRadixString(16).padLeft(4, '0'));
   }
 
-  static bool compareStrings(String uuid1, String uuid2) {
-    try {
-      final normalized1 = string(uuid1);
-      final normalized2 = string(uuid2);
-      return normalized1 == normalized2;
-    } catch (e) {
-      developer.log('Error comparing UUIDs: $uuid1 vs $uuid2', name: 'BleUuidParser');
-      return false;
-    }
-  }
-
-  static bool _isValid128BitUuid(String uuid) {
-    final regex = RegExp(
-      r'^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$',
-    );
-    return regex.hasMatch(uuid);
-  }
-
-  static bool _isValid16BitUuid(String uuid) {
-    final regex = RegExp(r'^[0-9A-Fa-f]{4}$');
-    return regex.hasMatch(uuid);
-  }
-
-  static bool _isValid32BitUuid(String uuid) {
-    final regex = RegExp(r'^[0-9A-Fa-f]{8}$');
-    return regex.hasMatch(uuid);
-  }
+  /// Compare two UUIDs regardless of their format.
+  /// Throws `FormatException` if the UUID is invalid.
+  static bool compareStrings(String uuid1, String uuid2) =>
+      string(uuid1) == string(uuid2);
 }
 
+/// Parse a list of strings to a list of UUIDs.
 extension StringListToUUID on List<String> {
-  List<String> toUUIDList() {
-    return map((uuid) {
-      try {
-        return BleUuidParser.string(uuid);
-      } catch (e) {
-        developer.log('Invalid UUID in list: $uuid', name: 'StringListToUUID');
-        return uuid;
-      }
-    }).toList();
-  }
+  List<String> toValidUUIDList() => map(BleUuidParser.string).toList();
 }

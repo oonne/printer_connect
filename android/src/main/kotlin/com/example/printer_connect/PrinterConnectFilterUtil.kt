@@ -92,7 +92,7 @@ object PrinterConnectFilterUtil {
 
     fun UniversalScanFilter?.usesCustomFilters(): Boolean {
         if (this == null) return false
-        return withNamePrefix.isNotEmpty()
+        return withManufacturerData.isNotEmpty() || withNamePrefix.isNotEmpty()
     }
 
     fun UniversalScanFilter.toScanFilters(serviceUuids: List<UUID>): List<ScanFilter> {

@@ -164,9 +164,11 @@ class PrinterConnect {
       deviceId,
       timeout: timeout,
     );
+
     _platform
         .connect(
           deviceId,
+          connectionTimeout: timeout,
           autoConnect: autoConnect,
           platformConfig: platformConfig,
         )
@@ -177,6 +179,7 @@ class PrinterConnect {
             code: 'connection_error',
           ));
         });
+
     if (!await completer.future.timeout(timeout)) {
       throw exceptions.ConnectionException(
         "Failed to connect",
@@ -195,7 +198,7 @@ class PrinterConnect {
     timeout ??= const Duration(seconds: 60);
     BleConnectionState? connectionState;
     try {
-      connectionState = _platform.getConnectionState(deviceId);
+      connectionState = await _platform.getConnectionState(deviceId);
     } catch (e) {
       UniversalLogger.logError("Get connection state failed: $e");
     }
@@ -460,25 +463,65 @@ class PrinterConnect {
   }
 
   /// Get connection state of a device.
-  static BleConnectionState getConnectionState(String deviceId) {
-    return _platform.getConnectionState(deviceId);
+  static Future<BleConnectionState> getConnectionState(
+    String deviceId, {
+    Duration? timeout,
+    String? queueId,
+  }) async {
+    return await _bleCommandQueue.queueCommand(
+      () => _platform.getConnectionState(deviceId),
+      timeout: timeout,
+      queueId: queueId,
+    );
   }
 
   /// Get system connected devices.
-  static Future<List<BleDevice>> getSystemDevices(
-      {List<String> withServices = const []}) async {
-    return _platform.getSystemDevices(withServices);
+  static Future<List<BleDevice>> getSystemDevices({
+    List<String>? withServices,
+    Duration? timeout,
+    String? queueId,
+  }) async {
+    return await _bleCommandQueue.queueCommand(
+      () => _platform.getSystemDevices(withServices?.toValidUUIDList()),
+      timeout: timeout,
+      queueId: queueId,
+    );
   }
 
   /// Enable Bluetooth (Android only).
-  static Future<bool> enableBluetooth() async {
-    return _platform.enableBluetooth();
+  static Future<bool> enableBluetooth({
+    Duration? timeout,
+    String? queueId,
+  }) async {
+    return await _bleCommandQueue.queueCommand(
+      () => _platform.enableBluetooth(),
+      timeout: timeout,
+      queueId: queueId,
+    );
   }
 
   /// Disable Bluetooth (Android only).
-  static Future<bool> disableBluetooth() async {
-    return _platform.disableBluetooth();
+  static Future<bool> disableBluetooth({
+    Duration? timeout,
+    String? queueId,
+  }) async {
+    return await _bleCommandQueue.queueCommand(
+      () => _platform.disableBluetooth(),
+      timeout: timeout,
+      queueId: queueId,
+    );
   }
+
+  /// Clear a queue.
+  /// Use [BleCommandQueue.globalQueueId] to clear the global queue.
+  /// To clear the queue of a specific device, use `deviceId` as [id].
+  /// To clear a custom queue, pass the same `queueId` string used when enqueueing commands.
+  /// If no [id] is provided, all queues will be cleared.
+  static void clearQueue([String? id]) => _bleCommandQueue.clearQueue(id);
+
+  /// Get updates of remaining items of a queue.
+  static set onQueueUpdate(OnQueueUpdate? onQueueUpdate) =>
+      _bleCommandQueue.onQueueUpdate = onQueueUpdate;
 
   /// Check if device receives advertisements.
   static bool receivesAdvertisements(String deviceId) {
@@ -490,16 +533,55 @@ class PrinterConnect {
   /// Creates a completer that will be completed when the connection state changes.
   static Completer<bool> _connectionEventCompleter(
     String deviceId, {
-    required Duration timeout,
+    Duration? timeout,
   }) {
-    final completer = Completer<bool>();
-    final subscription = connectionStream(deviceId).listen((connected) {
+    timeout ??= const Duration(seconds: 60);
+    final target = deviceId.toLowerCase();
+    StreamSubscription? connectionSubscription;
+    Completer<bool> completer = Completer();
+
+    void cancelSubscription() {
+      connectionSubscription?.cancel();
+      connectionSubscription = null;
+    }
+
+    void handleError(dynamic error) {
+      cancelSubscription();
       if (completer.isCompleted) return;
-      completer.complete(connected);
-    });
-    completer.future.whenComplete(() {
-      subscription.cancel();
-    });
+      completer.completeError(exceptions.ConnectionException(
+        error.toString(),
+        code: 'connection_error',
+      ));
+    }
+
+    connectionSubscription = _platform
+        .bleConnectionUpdateStreamController
+        .stream
+        .where((e) => e.deviceId == deviceId || e.deviceId.toLowerCase() == target)
+        .listen(
+          (e) {
+            cancelSubscription();
+            if (e.error != null) {
+              handleError(e.error);
+            } else {
+              if (!completer.isCompleted) {
+                completer.complete(e.isConnected);
+              }
+            }
+          },
+          onError: handleError,
+          cancelOnError: true,
+        );
+
+    completer.future
+        .timeout(timeout)
+        .then((_) {
+          cancelSubscription();
+        })
+        .catchError((_) {
+          cancelSubscription();
+        });
+
     return completer;
   }
 

@@ -143,6 +143,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
     private var bluetoothManager: BluetoothManager? = null
     private var bluetoothAdapter: BluetoothAdapter? = null
+    private var safeScanner: SafeScanner? = null
 
     private var scanCallback: ScanCallback? = null
     private var isScanning: Boolean = false
@@ -219,6 +220,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
         bluetoothManager = context?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         bluetoothAdapter = bluetoothManager?.adapter
+        safeScanner = SafeScanner(bluetoothManager!!)
 
         callbackChannel = UniversalBleCallbackChannel(binaryMessenger)
         UniversalBlePlatformChannel.setUp(binaryMessenger, this)
@@ -578,14 +580,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         pendingScanFilter = filter
         pendingScanConfig = config
 
-        val scanner = adapter.bluetoothLeScanner
-        if (scanner == null) {
-            throw createFlutterError(
-                UniversalBleErrorCode.FAILED,
-                "Cannot get BluetoothLeScanner"
-            )
-        }
-
         val androidOptions = config?.android
         val builder = ScanSettings.Builder()
 
@@ -639,7 +633,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
             override fun onScanFailed(errorCode: Int) {
                 PrinterConnectLogger.logError("Scan failed with error code: ${errorCode.parseScanErrorMessage()}")
-                isScanning = false
                 handler.post {
                     callbackChannel?.onScanResult(
                         UniversalBleScanResult(
@@ -663,28 +656,21 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             if (usesCustomFilters) {
                 PrinterConnectFilterUtil.scanFilter = filter
                 PrinterConnectFilterUtil.serviceFilterUUIDS = filterServices
-                scanner.startScan(null, scanSettings, scanCallbackInner)
+                safeScanner?.startScan(emptyList(), scanSettings, scanCallbackInner)
             } else {
                 PrinterConnectFilterUtil.scanFilter = null
                 val scanFilters = filter?.toScanFilters(filterServices) ?: emptyList()
-                if (scanFilters.isNotEmpty()) {
-                    scanner.startScan(scanFilters, scanSettings, scanCallbackInner)
-                } else {
-                    scanner.startScan(null, scanSettings, scanCallbackInner)
-                }
+                safeScanner?.startScan(scanFilters, scanSettings, scanCallbackInner)
             }
-            isScanning = true
             PrinterConnectLogger.logInfo("Scan started (usesCustomFilters=$usesCustomFilters)")
         } catch (e: SecurityException) {
             PrinterConnectLogger.logError("SecurityException starting scan: ${e.message}")
-            isScanning = false
             throw createFlutterError(
                 UniversalBleErrorCode.SCAN_FAILED,
                 "Security exception: ${e.message}"
             )
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error starting scan: ${e.message}")
-            isScanning = false
             throw createFlutterError(
                 UniversalBleErrorCode.SCAN_FAILED,
                 "Failed to start scan: ${e.message}"
