@@ -628,7 +628,7 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         let peripheralId = peripheral.uuid.uuidString
         let characteristicId = characteristic.uuid.uuidStr
-        let serviceId = characteristic.service?.uuid.uuidStr ?? ""
+        let serviceId = characteristic.service?.uuid.uuidStr
 
         let isReadOperation = characteristicReadFutures.contains { future in
             future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId
@@ -679,7 +679,7 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         let peripheralId = peripheral.uuid.uuidString
         let characteristicId = characteristic.uuid.uuidStr
-        let serviceId = characteristic.service?.uuid.uuidStr ?? ""
+        let serviceId = characteristic.service?.uuid.uuidStr
 
         characteristicWriteFutures.removeAll { future in
             if future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId {
@@ -698,7 +698,7 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         let peripheralId = peripheral.uuid.uuidString
         let characteristicId = characteristic.uuid.uuidStr
-        let serviceId = characteristic.service?.uuid.uuidStr ?? ""
+        let serviceId = characteristic.service?.uuid.uuidStr
 
         characteristicNotifyFutures.removeAll { future in
             if future.deviceId == peripheralId && future.characteristicId == characteristicId && future.serviceId == serviceId {

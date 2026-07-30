@@ -24,7 +24,6 @@ import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.FlutterError
 import java.util.concurrent.ConcurrentHashMap
 
 enum class UniversalBleErrorCode(val raw: Int) {
@@ -83,7 +82,10 @@ enum class UniversalBleErrorCode(val raw: Int) {
     CONNECTION_IN_PROGRESS(52),
     DEVICE_DISCONNECTED(53),
     CHARACTERISTIC_DOES_NOT_SUPPORT_WRITE(54),
-    CHARACTERISTIC_DOES_NOT_SUPPORT_WRITE_WITHOUT_RESPONSE(55)
+    CHARACTERISTIC_DOES_NOT_SUPPORT_WRITE_WITHOUT_RESPONSE(55),
+    CHARACTERISTIC_DOES_NOT_SUPPORT_READ(56),
+    CHARACTERISTIC_DOES_NOT_SUPPORT_NOTIFY(57),
+    CHARACTERISTIC_DOES_NOT_SUPPORT_INDICATE(58)
 }
 
 fun Int.parseHciErrorCode(): String? {
@@ -234,10 +236,10 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                                 handler.post { pendingCallback.invoke(Result.success(true)) }
                             }
                             bondState == BluetoothDevice.ERROR -> {
-                                handler.post { pendingCallback.invoke(Result.failure(createFlutterError(UniversalBleErrorCode.PAIRING_FAILED, "Pairing failed for $deviceAddress"))) }
+                                handler.post { pendingCallback.invoke(Result.success(false)) }
                             }
                             bondState == BluetoothDevice.BOND_NONE -> {
-                                handler.post { pendingCallback.invoke(Result.failure(createFlutterError(UniversalBleErrorCode.PAIRING_FAILED, "Pairing failed for $deviceAddress"))) }
+                                handler.post { pendingCallback.invoke(Result.success(false)) }
                             }
                             bondState == BluetoothDevice.BOND_BONDING -> {
                                 PrinterConnectLogger.logDebug("Bonding in progress for $deviceAddress")
@@ -411,7 +413,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         subscriptionFutures.clear()
     }
 
-    private fun completeFuturesForDevice(deviceId: String, error: FlutterError) {
+    private fun completeFuturesForDevice(deviceId: String, error: FlutterException) {
         val deviceDisconnectedError = error
 
         discoverFutures.remove(deviceId)?.forEach { callback ->
@@ -488,6 +490,8 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             "Device Disconnected",
         )
         completeFuturesForDevice(deviceId, deviceDisconnectedError)
+        // Clear cached services so a reconnect re-discovers rather than returning stale data.
+        cachedServices.remove(deviceId)
     }
 
     @SuppressLint("MissingPermission")
@@ -514,7 +518,9 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     override fun hasPermissions(withAndroidFineLocation: Boolean): Boolean {
         val ctx = context
         if (ctx == null) return false
-        val permissions = PermissionHandler.getRequiredPermissions(ctx, forScan = true)
+        val permissions = PermissionHandler.getRequiredPermissions(
+            ctx, forScan = true, withAndroidFineLocation = withAndroidFineLocation
+        )
         return PermissionHandler.hasPermissions(ctx, permissions)
     }
 
@@ -526,12 +532,27 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             return
         }
 
-        val permissions = PermissionHandler.getRequiredPermissions(ctx, forScan = true)
+        val permissions = PermissionHandler.getRequiredPermissions(
+            ctx, forScan = true, withAndroidFineLocation = withAndroidFineLocation
+        )
         if (PermissionHandler.hasPermissions(ctx, permissions)) {
             callback(Result.success(Unit))
             return
         }
+        // Reject duplicate permission requests so the in-flight callback isn't
+        // overwritten (and lost). Matches the reference project's behaviour.
+        if (pendingPermissionResult != null) {
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.OPERATION_IN_PROGRESS, "Permission request already in progress")))
+            return
+        }
 
+        val launcher = permissionLauncher
+        if (launcher == null) {
+            // No launcher available — fail without stashing pendingPermissionResult,
+            // otherwise the callback would be leaked (never invoked/cleared).
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Cannot launch permission request")))
+            return
+        }
         pendingPermissionResult = { granted ->
             handler.post {
                 if (granted) {
@@ -541,8 +562,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                 }
             }
         }
-        permissionLauncher?.launch(permissions.toTypedArray())
-            ?: callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Cannot launch permission request")))
+        launcher.launch(permissions.toTypedArray())
     }
 
     override fun enableBluetooth(callback: (Result<Boolean>) -> Unit) {
@@ -555,19 +575,25 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             callback(Result.success(true))
             return
         }
-
-        val act = activityBinding?.activity
-        if (act == null) {
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Activity is required to enable Bluetooth")))
+        // Reject duplicate enable requests so the in-flight callback isn't
+        // overwritten (and lost). Matches the reference project's behaviour.
+        if (pendingEnableResult != null) {
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.OPERATION_IN_PROGRESS, "Bluetooth enable request already in progress")))
             return
         }
 
+        val launcher = enableBluetoothLauncher
+        if (launcher == null) {
+            // No launcher available — fail without stashing pendingEnableResult,
+            // otherwise the callback would be leaked (never invoked/cleared).
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Cannot launch Bluetooth enable intent")))
+            return
+        }
         pendingEnableResult = { success ->
             handler.post { callback(Result.success(success)) }
         }
         val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-        enableBluetoothLauncher?.launch(enableIntent)
-            ?: callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Cannot launch Bluetooth enable intent")))
+        launcher.launch(enableIntent)
     }
 
     override fun disableBluetooth(callback: (Result<Boolean>) -> Unit) {
@@ -667,21 +693,10 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             }
 
             override fun onScanFailed(errorCode: Int) {
+                // Only log; do not emit an empty scan result (deviceId = "") to Dart,
+                // which could be misinterpreted as a valid device. The reference project
+                // also only logs on scan failure.
                 PrinterConnectLogger.logError("Scan failed with error code: ${errorCode.parseScanErrorMessage()}")
-                handler.post {
-                    callbackChannel?.onScanResult(
-                        UniversalBleScanResult(
-                            deviceId = "",
-                            name = null,
-                            isPaired = null,
-                            rssi = null,
-                            manufacturerDataList = null,
-                            serviceData = null,
-                            services = null,
-                            timestamp = System.currentTimeMillis()
-                        )
-                    ) { _ -> }
-                }
             }
         }
         scanCallback = scanCallbackInner
@@ -747,8 +762,8 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             name = name,
             isPaired = isPaired,
             rssi = result.rssi.toLong(),
-            manufacturerDataList = result.manufacturerDataList(),
-            serviceData = result.serviceData(),
+            manufacturerDataList = result.manufacturerDataList,
+            serviceData = result.serviceData,
             services = deviceServices,
             timestamp = timestamp
         )
@@ -763,11 +778,14 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     @SuppressLint("MissingPermission")
     private fun stopScanInternal() {
         if (!(safeScanner?.isScanning() ?: false)) return
-        val adapter = bluetoothAdapter ?: return
-        val scanner = adapter.bluetoothLeScanner ?: return
+        val callback = scanCallback ?: return
 
         try {
-            scanner.stopScan(scanCallback)
+            // Route through SafeScanner.stopScan so it cancels pending delayed scan
+            // retries and resets its internal awaitingScan/isScanning flags. Calling
+            // BluetoothLeScanner.stopScan directly leaves those in place, so a
+            // frequency-limited retry can restart a ghost scan after stopScan.
+            safeScanner?.stopScan(callback)
             PrinterConnectLogger.logInfo("Scan stopped")
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error stopping scan: ${e.message}")
@@ -1043,11 +1061,18 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
         try {
             val key = "$deviceId/$service/$characteristic"
-            readFutures[key] = callback
+            // Check the GATT operation BEFORE storing the callback. Android serializes
+            // GATT operations per connection, so a concurrent read on the same
+            // characteristic returns false here. Storing first would overwrite (and
+            // thus lose) the in-flight callback's entry. By storing only after a
+            // successful initiation we guarantee the in-flight callback survives.
+            // GATT completion callbacks fire asynchronously (after a BLE round-trip),
+            // so there is no risk of onCharacteristicRead racing ahead of the store.
             if (!gatt.readCharacteristic(gattCharacteristic)) {
-                readFutures.remove(key)
                 callback(Result.failure(createFlutterError(UniversalBleErrorCode.READ_FAILED, "Failed to initiate read")))
+                return
             }
+            readFutures[key] = callback
         } catch (e: Exception) {
             callback(Result.failure(createFlutterError(UniversalBleErrorCode.READ_FAILED, e.message ?: "Unknown error")))
         }
@@ -1090,9 +1115,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             }
 
             val key = "$deviceId/$service/$characteristic"
-            synchronized(writeFutures) {
-                writeFutures[key] = callback
-            }
 
             val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 gatt.writeCharacteristic(gattCharacteristic, value, writeType)
@@ -1105,11 +1127,17 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                 if (success) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_FAILURE
             }
 
+            // Store the callback only after a successful write initiation. Storing
+            // first would overwrite (and lose) an in-flight write's callback under
+            // concurrent calls on the same characteristic. onCharacteristicWrite
+            // fires asynchronously after a BLE round-trip, so it cannot race ahead
+            // of this store.
             if (result != BluetoothGatt.GATT_SUCCESS) {
-                synchronized(writeFutures) {
-                    writeFutures.remove(key)
-                }
                 callback(Result.failure(createFlutterError(gattStatusToPrinterConnectErrorCode(result), "Failed to write", result.toString())))
+                return
+            }
+            synchronized(writeFutures) {
+                writeFutures[key] = callback
             }
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error writing value: ${e.message}")
@@ -1126,10 +1154,16 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         }
 
         try {
+            // Store the callback only after a successful MTU request initiation.
+            // Storing first would overwrite (and lose) an in-flight MTU callback
+            // under concurrent calls on the same device. onMtuChanged fires
+            // asynchronously, so it cannot race ahead of this store.
+            if (!gatt.requestMtu(expectedMtu.toInt())) {
+                callback(Result.failure(createFlutterError(UniversalBleErrorCode.MTU_REQUEST_FAILED, "Failed to request MTU")))
+                return
+            }
             mtuFutures[deviceId] = callback
-            gatt.requestMtu(expectedMtu.toInt())
         } catch (e: Exception) {
-            mtuFutures.remove(deviceId)
             callback(Result.failure(createFlutterError(UniversalBleErrorCode.MTU_REQUEST_FAILED, e.message ?: "Unknown error")))
         }
     }
@@ -1143,13 +1177,16 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         }
 
         try {
-            rssiFutures[deviceId] = callback
+            // Store the callback only after a successful RSSI read initiation.
+            // Storing first would overwrite (and lose) an in-flight RSSI callback
+            // under concurrent calls on the same device. onReadRemoteRssi fires
+            // asynchronously, so it cannot race ahead of this store.
             if (!gatt.readRemoteRssi()) {
-                rssiFutures.remove(deviceId)
                 callback(Result.failure(createFlutterError(UniversalBleErrorCode.READ_FAILED, "Failed to read RSSI")))
+                return
             }
+            rssiFutures[deviceId] = callback
         } catch (e: Exception) {
-            rssiFutures.remove(deviceId)
             callback(Result.failure(createFlutterError(UniversalBleErrorCode.READ_FAILED, e.message ?: "Unknown error")))
         }
     }
@@ -1183,7 +1220,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             } else {
                 callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "requestConnectionPriority returned false")))
             }
-        } catch (e: FlutterError) {
+        } catch (e: FlutterException) {
             callback(Result.failure(e))
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error requesting connection priority: ${e.message}")
@@ -1550,6 +1587,10 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val deviceAddress = gatt?.device?.address ?: return
+        // Ignore updates for GATT connections we no longer track (already
+        // disconnected/cleaned up). Forwarding them to Dart could confuse the
+        // Dart layer into treating a stale device as active. Matches reference.
+        if (!deviceAddress.isKnownGatt()) return
         PrinterConnectLogger.logDebug(
             "Connection updated for $deviceAddress: interval=$interval, latency=$latency, timeout=$timeout, status=$status"
         )

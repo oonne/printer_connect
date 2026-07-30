@@ -15,7 +15,7 @@ class BleDevice {
 
   BleDevice({
     required this.deviceId,
-    this.name,
+    required String? name,
     this.rssi,
     this.paired,
     this.services = const [],
@@ -23,13 +23,9 @@ class BleDevice {
     this.manufacturerDataList = const [],
     Map<String, Uint8List>? serviceData,
     this.timestamp,
-  })  : rawName = _cleanName(name),
+  })  : rawName = name,
+        name = name?.replaceAll(RegExp(r'[^ -~]'), '').trim(),
         serviceData = _validateServiceData(serviceData ?? const {});
-
-  static String? _cleanName(String? name) {
-    if (name == null) return null;
-    return name.replaceAll(RegExp(r'[^ -~]'), '').trim();
-  }
 
   static Map<String, Uint8List> _validateServiceData(
       Map<String, Uint8List> data) {

@@ -52,7 +52,7 @@ class BleCharacteristic {
     this.descriptors = const [],
     required String deviceId,
     required String serviceId,
-  })  : metaData = (deviceId: deviceId, serviceId: serviceId),
+  })  : metaData = (deviceId: deviceId, serviceId: BleUuidParser.string(serviceId)),
         uuid = BleUuidParser.string(uuid);
 
   @override

@@ -15,10 +15,15 @@ import android.bluetooth.le.ScanCallback.SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES
 import android.bluetooth.le.ScanCallback.SCAN_FAILED_SCANNING_TOO_FREQUENTLY
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Context.RECEIVER_EXPORTED
 import android.content.Context.RECEIVER_NOT_EXPORTED
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
+import android.util.SparseArray
+import androidx.core.util.size
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
@@ -26,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 val ccdCharacteristic: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-private val knownGatts = ConcurrentHashMap<String, BluetoothGatt>()
+internal val knownGatts = ConcurrentHashMap<String, BluetoothGatt>()
 
 data class BondStateChange(
     val device: BluetoothDevice,
@@ -164,6 +169,12 @@ val ScanResult.serviceData: Map<String, ByteArray>
         return scanRecord?.serviceData?.mapKeys { it.key.uuid.toString() } ?: emptyMap()
     }
 
+fun <T> SparseArray<T>.toList(): List<Pair<Int, T>> {
+    return (0 until size).map { index ->
+        keyAt(index) to valueAt(index)
+    }
+}
+
 @SuppressLint("MissingPermission")
 fun BluetoothGatt.getCharacteristic(
     service: String,
@@ -217,7 +228,7 @@ fun createFlutterError(
     code: UniversalBleErrorCode,
     message: String? = null,
     details: String? = null,
-) = FlutterError(code.raw.toString(), message, details ?: code.toString())
+) = FlutterException(code.raw.toString(), message, details ?: code.toString())
 
 fun Int.parseScanErrorMessage(): String {
     return when (this) {

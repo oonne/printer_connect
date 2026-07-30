@@ -41,7 +41,8 @@ object PermissionHandler {
 
     fun getRequiredPermissions(
         context: Context,
-        forScan: Boolean = false
+        forScan: Boolean = false,
+        withAndroidFineLocation: Boolean = false
     ): List<String> {
         val permissions = mutableListOf<String>()
 
@@ -50,18 +51,40 @@ object PermissionHandler {
             if (forScan) {
                 permissions.add(Manifest.permission.BLUETOOTH_SCAN)
             }
+            // On Android 12+ location is optional and only needed when the caller
+            // explicitly wants it (e.g. to derive location from scan results).
+            // Only request it when declared in the manifest, otherwise requesting an
+            // undeclared permission would be auto-denied and fail the whole batch.
+            if (withAndroidFineLocation &&
+                hasPermissionInManifest(context, Manifest.permission.ACCESS_FINE_LOCATION)
+            ) {
+                permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
         } else {
             permissions.add(Manifest.permission.BLUETOOTH)
             permissions.add(Manifest.permission.BLUETOOTH_ADMIN)
-        }
-
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            // On Android 11 and below, ACCESS_FINE_LOCATION is mandatory for BLE scanning.
             permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
         return permissions
+    }
+
+    /**
+     * Checks whether [permission] is declared in AndroidManifest.xml (via a
+     * `<uses-permission>` tag). Used to avoid requesting permissions the app did
+     * not declare, which would otherwise be auto-denied and fail the batch.
+     */
+    fun hasPermissionInManifest(context: Context, permission: String): Boolean {
+        return try {
+            val packageInfo = context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.GET_PERMISSIONS
+            )
+            packageInfo.requestedPermissions?.contains(permission) == true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun validateRequiredPermissions(context: Context): Boolean {

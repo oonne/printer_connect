@@ -463,10 +463,13 @@ class PrinterConnect {
   /// Unpair a device.
   static Future<void> unpair(
     String deviceId, {
+    Duration? timeout,
     String? queueId,
   }) async {
     return _bleCommandQueue.queueCommand(
       () => _platform.unpair(deviceId),
+      deviceId: deviceId,
+      timeout: timeout,
       queueId: queueId,
     );
   }

@@ -2,9 +2,11 @@ package com.example.printer_connect
 
 import android.annotation.SuppressLint
 import android.bluetooth.le.ScanFilter
+import android.bluetooth.le.ScanResult
 import android.os.ParcelUuid
 import android.util.Log
 import java.util.UUID
+import kotlin.experimental.and
 
 object PrinterConnectFilterUtil {
 
@@ -89,56 +91,75 @@ object PrinterConnectFilterUtil {
             (filterData[i] and mask[i]) == (deviceData[i] and mask[i])
         }
     }
+}
 
-    fun UniversalScanFilter?.usesCustomFilters(): Boolean {
-        if (this == null) return false
-        return withManufacturerData.isNotEmpty() || withNamePrefix.isNotEmpty()
+// Top-level extension functions (kept outside the object so they can be invoked
+// directly as `filter?.usesCustomFilters()` / `filter.toScanFilters(...)`, matching
+// the reference project structure).
+fun UniversalScanFilter?.usesCustomFilters(): Boolean {
+    if (this == null) return false
+    // NamePrefix filtering is not supported in native filters, so it requires
+    // custom Dart-side filtering. ManufacturerData is handled by native filters
+    // via toScanFilters, so it does not require custom filtering here.
+    return withNamePrefix.isNotEmpty()
+}
+
+fun UniversalScanFilter.toScanFilters(serviceUuids: List<UUID>): List<ScanFilter> {
+    val scanFilters = mutableListOf<ScanFilter>()
+
+    for (service in serviceUuids) {
+        try {
+            scanFilters.add(
+                ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()
+            )
+        } catch (e: Exception) {
+            PrinterConnectLogger.logError("Invalid service UUID: $service")
+            throw createFlutterError(
+                UniversalBleErrorCode.FAILED,
+                "Invalid serviceId: $service",
+                e.toString(),
+            )
+        }
     }
 
-    fun UniversalScanFilter.toScanFilters(serviceUuids: List<UUID>): List<ScanFilter> {
-        val scanFilters = mutableListOf<ScanFilter>()
-
-        for (service in serviceUuids) {
-            try {
+    for (manufacturerData in this.withManufacturerData) {
+        try {
+            val data = manufacturerData.payloadPrefix ?: ByteArray(0)
+            val mask = manufacturerData.payloadMask
+            if (mask == null) {
                 scanFilters.add(
-                    ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()
+                    ScanFilter.Builder().setManufacturerData(
+                        manufacturerData.companyIdentifier.toInt(), data
+                    ).build()
                 )
-            } catch (e: Exception) {
-                PrinterConnectLogger.logError("Invalid service UUID: $service")
+            } else {
+                scanFilters.add(
+                    ScanFilter.Builder().setManufacturerData(
+                        manufacturerData.companyIdentifier.toInt(), data, mask
+                    ).build()
+                )
             }
+        } catch (e: Exception) {
+            PrinterConnectLogger.logError("Invalid manufacturerData: ${manufacturerData.companyIdentifier}")
+            throw createFlutterError(
+                UniversalBleErrorCode.FAILED,
+                "Invalid manufacturerData: ${manufacturerData.companyIdentifier} ${manufacturerData.payloadPrefix} ${manufacturerData.payloadMask}",
+                e.toString(),
+            )
         }
-
-        for (manufacturerData in this.withManufacturerData) {
-            try {
-                val data = manufacturerData.payloadPrefix ?: ByteArray(0)
-                val mask = manufacturerData.payloadMask
-                if (mask == null) {
-                    scanFilters.add(
-                        ScanFilter.Builder().setManufacturerData(
-                            manufacturerData.companyIdentifier.toInt(), data
-                        ).build()
-                    )
-                } else {
-                    scanFilters.add(
-                        ScanFilter.Builder().setManufacturerData(
-                            manufacturerData.companyIdentifier.toInt(), data, mask
-                        ).build()
-                    )
-                }
-            } catch (e: Exception) {
-                PrinterConnectLogger.logError("Invalid manufacturerData: ${manufacturerData.companyIdentifier}")
-            }
-        }
-
-        return scanFilters
     }
+
+    return scanFilters
 }
 
 @SuppressLint("MissingPermission")
 fun ScanResult.isDeviceMatchingFilter(filter: UniversalScanFilter?): Boolean {
     if (filter == null) return true
-    val name = device.name
-    val manufacturerDataList = manufacturerDataList()
-    val serviceUuids = scanRecord?.serviceUuids?.toTypedArray() ?: arrayOf()
-    return PrinterConnectFilterUtil.filterDevice(name, manufacturerDataList, serviceUuids)
+    // Use resolvedDeviceName (advertised name preferred over cached device.name) so the filter
+    // uses the same name source that is reported to Dart in handleScanResult.
+    val name = this.resolvedDeviceName
+    val manufacturerData = this.manufacturerDataList
+    // scanRecord.serviceUuids is List<ParcelUuid>; extract .uuid to get Array<UUID> for filtering.
+    val serviceUuids = scanRecord?.serviceUuids?.map { it.uuid }?.toTypedArray() ?: arrayOf()
+    return PrinterConnectFilterUtil.filterDevice(name, manufacturerData, serviceUuids)
 }

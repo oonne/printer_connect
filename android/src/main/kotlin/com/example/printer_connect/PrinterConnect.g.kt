@@ -15,15 +15,15 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 private object PrinterConnectPigeonUtils {
 
-  fun createConnectionError(channelName: String): FlutterError {
-    return FlutterError("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
+  fun createConnectionError(channelName: String): FlutterException {
+    return FlutterException("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
 
   fun wrapResult(result: Any?): List<Any?> {
     return listOf(result)
   }
 
   fun wrapError(exception: Throwable): List<Any?> {
-    return if (exception is FlutterError) {
+    return if (exception is FlutterException) {
       listOf(
         exception.code,
         exception.message,
@@ -189,7 +189,7 @@ private object PrinterConnectPigeonUtils {
  * @property message The error message.
  * @property details The error details. Must be a datatype supported by the api codec.
  */
-class FlutterError (
+class FlutterException (
   val code: String,
   override val message: String? = null,
   val details: Any? = null
@@ -1569,7 +1569,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(stateArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1586,7 +1586,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(deviceIdArg, isPairedArg, errorArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1603,7 +1603,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(resultArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1620,7 +1620,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(deviceIdArg, characteristicIdArg, valueArg, timestampArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1637,7 +1637,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(deviceIdArg, connectedArg, errorArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1654,7 +1654,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(updateArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }

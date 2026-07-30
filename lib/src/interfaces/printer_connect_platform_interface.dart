@@ -289,7 +289,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
     if (filter == null) return [];
     return [
       UniversalScanFilter(
-        withServices: filter.withServices,
+        withServices: filter.withServices.toValidUUIDList(),
         withNamePrefix: filter.withNamePrefix,
         withManufacturerData: filter.withManufacturerData,
       ),
@@ -341,6 +341,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       deviceId: result.deviceId,
       name: result.name,
       rssi: result.rssi,
+      paired: result.isPaired,
       manufacturerDataList: result.manufacturerDataList
               ?.map((m) => ManufacturerData(
                     m.companyIdentifier,
@@ -348,7 +349,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
                   ))
               .toList() ??
           [],
-      services: result.services ?? const [],
+      services: (result.services ?? const []).map(BleUuidParser.string).toList(),
+      serviceData: result.serviceData ?? const {},
       timestamp: result.timestamp,
     );
     updateScanResult(device);
@@ -389,22 +391,20 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<bool> enableBluetooth() async {
-    try {
-      await _platformChannel.enableBluetooth();
-      return true;
-    } catch (e) {
-      return false;
+    if (!BleCapabilities.supportsBluetoothEnableApi) {
+      throw UnsupportedError('enableBluetooth is not supported on this platform');
     }
+    await _platformChannel.enableBluetooth();
+    return true;
   }
 
   @override
   Future<bool> disableBluetooth() async {
-    try {
-      await _platformChannel.disableBluetooth();
-      return true;
-    } catch (e) {
-      return false;
+    if (!BleCapabilities.supportsBluetoothEnableApi) {
+      throw UnsupportedError('disableBluetooth is not supported on this platform');
     }
+    await _platformChannel.disableBluetooth();
+    return true;
   }
 
   @override
@@ -460,14 +460,9 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   @override
   Future<List<BleService>> discoverServices(
       String deviceId, bool withDescriptors) async {
-    final cached = CacheHandler.instance.getServices(deviceId);
-    if (cached != null) {
-      return cached;
-    }
-
     final services =
         await _platformChannel.discoverServices(deviceId, withDescriptors);
-    final result = services.map((s) {
+    return services.map((s) {
       final characteristics = s.characteristics
               ?.map((c) => BleCharacteristic.withMetaData(
                     uuid: c.uuid,
@@ -485,8 +480,6 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       final service = BleService(uuid: s.uuid, characteristics: characteristics);
       return service;
     }).toList();
-    CacheHandler.instance.saveServices(deviceId, result);
-    return result;
   }
 
   CharacteristicProperty _mapCharacteristicProperty(
@@ -547,12 +540,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<bool> pair(String deviceId) async {
-    try {
-      await _platformChannel.pair(deviceId);
-      return true;
-    } catch (e) {
-      return false;
-    }
+    await _platformChannel.pair(deviceId);
+    return true;
   }
 
   @override
@@ -562,12 +551,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<BleConnectionState> getConnectionState(String deviceId) async {
-    try {
-      final connectionState = await _platformChannel.getConnectionState(deviceId);
-      return connectionState;
-    } catch (e) {
-      return BleConnectionState.disconnected;
-    }
+    return _platformChannel.getConnectionState(deviceId);
   }
 
   @override
@@ -579,6 +563,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
               deviceId: d.deviceId,
               name: d.name,
               rssi: d.rssi,
+              paired: d.isPaired,
+              isSystemDevice: true,
               manufacturerDataList: d.manufacturerDataList
                       ?.map((m) => ManufacturerData(
                             m.companyIdentifier,
@@ -586,7 +572,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
                           ))
                       .toList() ??
                   [],
-              services: d.services ?? const [],
+              services: (d.services ?? const []).map(BleUuidParser.string).toList(),
+              serviceData: d.serviceData ?? const {},
               timestamp: d.timestamp,
             ))
         .toList();
