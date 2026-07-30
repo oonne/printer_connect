@@ -985,6 +985,11 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             return
         }
 
+        if (gattCharacteristic.properties and BluetoothGattCharacteristic.PROPERTY_READ == 0) {
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.CHARACTERISTIC_DOES_NOT_SUPPORT_READ, "Characteristic does not support read")))
+            return
+        }
+
         try {
             val key = "$deviceId/$service/$characteristic"
             readFutures[key] = callback
