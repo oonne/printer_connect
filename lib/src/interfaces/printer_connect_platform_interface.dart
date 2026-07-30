@@ -540,8 +540,7 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   Future<bool> pair(String deviceId) async {
-    await _platformChannel.pair(deviceId);
-    return true;
+    return _platformChannel.pair(deviceId);
   }
 
   @override

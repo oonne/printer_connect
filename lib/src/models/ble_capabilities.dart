@@ -1,49 +1,50 @@
 import 'package:flutter/foundation.dart';
 
 class BleCapabilities {
-  static bool get supportsAllPairingKinds => _Platform.isAndroid;
+  /// Returns true if in-app pairing is possible either by API or by encrypted characteristic
+  /// using any kind of pairing method (Just Works, Numeric Comparison or Passkey Entry).
+  static final bool supportsAllPairingKinds =
+      triggersConfirmOnlyPairing || hasSystemPairingApi;
 
-  static bool get triggersConfirmOnlyPairing => _Platform.isIOS;
+  /// Returns true if the platform triggers pairing for devices that use only confirmation pairing
+  /// (a.k.a. "Just Works" or legacy pairing) when trying to read or write to an encrypted characteristic.
+  static final triggersConfirmOnlyPairing =
+      defaultTargetPlatform != TargetPlatform.windows &&
+      defaultTargetPlatform != TargetPlatform.linux;
 
-  static bool get hasSystemPairingApi =>
-      !_Platform.isWeb &&
-      (_Platform.isAndroid ||
-          _Platform.isWindows ||
-          _Platform.isLinux);
+  /// Returns true if pair()/unpair() are supported on the platform.
+  static bool hasSystemPairingApi =
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux);
 
-  static bool get requiresRuntimePermission =>
-      _Platform.isAndroid || _Platform.isWeb;
+  static bool requiresRuntimePermission =
+      !_Platform.isWeb && !_Platform.isWindows && !_Platform.isLinux;
 
-  static bool get supportsBluetoothEnableApi => _Platform.isAndroid;
+  static bool supportsBluetoothEnableApi =
+      !_Platform.isWeb && !_Platform.isCupertino;
 
-  static bool get supportsConnectedDevicesApi => !_Platform.isWeb;
+  static bool supportsConnectedDevicesApi = !_Platform.isWeb;
 
-  static bool get supportsPeripheralApi =>
-      _Platform.isAndroid || _Platform.isIOS || _Platform.isMacOS;
+  static bool supportsPeripheralApi = !_Platform.isWeb && !_Platform.isLinux;
 
-  static bool get supportsRequestMtuApi => !_Platform.isWeb;
+  static bool supportsRequestMtuApi = !_Platform.isWeb;
 
-  static bool get supportsConnectionPriorityApi => _Platform.isAndroid;
+  static bool supportsConnectionPriorityApi =
+      !_Platform.isWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  static bool get supportsConnectionParametersUpdates =>
-      _Platform.isAndroid || _Platform.isIOS;
+  /// Whether connection parameter update events are reported (Android API 26+).
+  static bool supportsConnectionParametersUpdates =
+      !_Platform.isWeb && defaultTargetPlatform == TargetPlatform.android;
 }
 
 class _Platform {
-  static bool get isWeb => kIsWeb;
-
-  static bool get isAndroid =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-
-  static bool get isIOS =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-
-  static bool get isMacOS =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
-
-  static bool get isWindows =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
-
-  static bool get isLinux =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
+  static bool isWeb = kIsWeb;
+  static bool isIOS = !isWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  static bool isMacos = !isWeb && defaultTargetPlatform == TargetPlatform.macOS;
+  static bool isWindows =
+      !isWeb && defaultTargetPlatform == TargetPlatform.windows;
+  static bool isLinux = !isWeb && defaultTargetPlatform == TargetPlatform.linux;
+  static bool get isCupertino => isIOS || isMacos;
 }

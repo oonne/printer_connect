@@ -100,6 +100,44 @@ PrinterConnectException errorParser(PlatformException e) {
   final message = e.message ?? 'Unknown error';
   final details = e.details;
 
+  // Try to parse numeric code first - both iOS and Android send numeric
+  // codes as strings (e.g. "6" for connection_failed, "11" for write_failed).
+  final int? numericCode = int.tryParse(code);
+  if (numericCode != null) {
+    switch (numericCode) {
+      case 6: // connectionFailed
+      case 7: // connectionTimeout
+      case 8: // connectionLost
+      case 9: // connectionNotEstablished
+      case 10: // disconnectionFailed
+        return ConnectionException(message,
+            code: code, details: details);
+      case 11: // writeFailed
+        return WriteException(message, code: code, details: details);
+      case 12: // readFailed
+        return ReadException(message, code: code, details: details);
+      case 13: // discoverServicesFailed
+        return DiscoverServicesException(message,
+            code: code, details: details);
+      case 14: // setNotifyFailed
+      case 15: // setIndicateFailed
+        return SetNotifyException(message, code: code, details: details);
+      case 16: // scanFailed
+      case 17: // scanTimeout
+        return ScanException(message, code: code, details: details);
+      case 18: // deviceNotFound
+        return DeviceNotFoundException(message);
+      case 24: // operationCancelled
+      case 25: // operationNotSupported
+        return OperationNotSupportedException(message);
+      case 26: // mtuRequestFailed
+        return MtuException(message, code: code, details: details);
+      case 27: // pairingFailed
+      case 28: // unpairFailed
+        return PairingException(message, code: code, details: details);
+    }
+  }
+
   switch (code) {
     case 'connection_error':
     case 'connect_error':

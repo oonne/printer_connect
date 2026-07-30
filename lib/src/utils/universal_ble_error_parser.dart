@@ -43,21 +43,45 @@ class UniversalBleErrorParser {
   UniversalBleErrorParser._();
 
   static UniversalBleErrorCode getCode(dynamic error) {
+    if (error is UniversalBleErrorCode) return error;
+
     if (error is PlatformException) {
-      return _parseStringErrorCode(error.code);
-    } else if (error is TimeoutException) {
+      final code = error.code;
+      final int? intCode = int.tryParse(code);
+      if (intCode != null) {
+        final parsed = _parseNumericErrorCode(intCode);
+        if (parsed != null) return parsed;
+      }
+      return _parseStringErrorCode(code) ?? UniversalBleErrorCode.unknownError;
+    }
+
+    if (error is num) {
+      final parsed = _parseNumericErrorCode(error.toInt());
+      return parsed ?? UniversalBleErrorCode.unknownError;
+    }
+
+    if (error is String) {
+      final int? intCode = int.tryParse(error);
+      if (intCode != null) {
+        final parsed = _parseNumericErrorCode(intCode);
+        if (parsed != null) return parsed;
+      }
+      return _parseStringErrorCode(error) ?? UniversalBleErrorCode.unknownError;
+    }
+
+    if (error is TimeoutException) {
       return UniversalBleErrorCode.connectionTimeout;
     } else if (error is StateError) {
       return UniversalBleErrorCode.unknownError;
     } else if (error is ArgumentError) {
       return UniversalBleErrorCode.invalidValue;
     } else if (error is Exception) {
-      return _parseStringErrorCode(error.toString());
+      return _parseStringErrorCode(error.toString()) ?? UniversalBleErrorCode.unknownError;
     }
     return UniversalBleErrorCode.unknownError;
   }
 
-  static UniversalBleErrorCode _parseStringErrorCode(String code) {
+  static UniversalBleErrorCode? _parseStringErrorCode(String code) {
     final lowerCode = code.toLowerCase();
 
     if (lowerCode.contains('bluetooth') || lowerCode.contains('ble')) {
@@ -195,81 +219,19 @@ class UniversalBleErrorParser {
       return UniversalBleErrorCode.invalidTransactionId;
     }
 
-    return _parseNumericErrorCode(code.hashCode);
+    return null;
   }
 
-  static UniversalBleErrorCode _parseNumericErrorCode(int code) {
-    switch (code) {
-      case 0:
-        return UniversalBleErrorCode.unknownError;
-      case 1:
-        return UniversalBleErrorCode.bluetoothNotAvailable;
-      case 2:
-        return UniversalBleErrorCode.bluetoothNotAuthorized;
-      case 3:
-        return UniversalBleErrorCode.bluetoothPermissionDenied;
-      case 4:
-        return UniversalBleErrorCode.bluetoothDisabled;
-      case 5:
-        return UniversalBleErrorCode.bluetoothInvalidState;
-      case 6:
-        return UniversalBleErrorCode.connectionFailed;
-      case 7:
-        return UniversalBleErrorCode.connectionTimeout;
-      case 8:
-        return UniversalBleErrorCode.connectionLost;
-      case 9:
-        return UniversalBleErrorCode.connectionNotEstablished;
-      case 10:
-        return UniversalBleErrorCode.disconnectionFailed;
-      case 11:
-        return UniversalBleErrorCode.writeFailed;
-      case 12:
-        return UniversalBleErrorCode.readFailed;
-      case 13:
-        return UniversalBleErrorCode.discoverServicesFailed;
-      case 14:
-        return UniversalBleErrorCode.setNotifyFailed;
-      case 15:
-        return UniversalBleErrorCode.setIndicateFailed;
-      case 16:
-        return UniversalBleErrorCode.scanFailed;
-      case 17:
-        return UniversalBleErrorCode.scanTimeout;
-      case 18:
-        return UniversalBleErrorCode.deviceNotFound;
-      case 19:
-        return UniversalBleErrorCode.serviceNotFound;
-      case 20:
-        return UniversalBleErrorCode.characteristicNotFound;
-      case 21:
-        return UniversalBleErrorCode.descriptorNotFound;
-      case 22:
-        return UniversalBleErrorCode.invalidValue;
-      case 23:
-        return UniversalBleErrorCode.invalidDeviceId;
-      case 24:
-        return UniversalBleErrorCode.operationCancelled;
-      case 25:
-        return UniversalBleErrorCode.operationNotSupported;
-      case 26:
-        return UniversalBleErrorCode.mtuRequestFailed;
-      case 27:
-        return UniversalBleErrorCode.pairingFailed;
-      case 28:
-        return UniversalBleErrorCode.unpairFailed;
-      case 29:
-        return UniversalBleErrorCode.securityError;
-      case 30:
-        return UniversalBleErrorCode.streamAlreadyListening;
-      case 31:
-        return UniversalBleErrorCode.streamNotListening;
-      case 32:
-        return UniversalBleErrorCode.transactionInProgress;
-      case 33:
-        return UniversalBleErrorCode.invalidTransactionId;
-      default:
-        return UniversalBleErrorCode.unknownError;
+  /// Parses a numeric error code coming from the native platform.
+  /// Both iOS and Android send numeric codes as strings (e.g. "6" for
+  /// connection_failed, "11" for write_failed). The Dart-side
+  /// [UniversalBleErrorCode] enum indices (0..33) mirror the Android
+  /// [UniversalBleErrorCode] raw values, so a direct index lookup works
+  /// once the native enums are aligned.
+  static UniversalBleErrorCode? _parseNumericErrorCode(int code) {
+    if (code >= 0 && code < UniversalBleErrorCode.values.length) {
+      return UniversalBleErrorCode.values[code];
     }
+    return null;
   }
 }

@@ -29,13 +29,13 @@ class BleDevice {
 
   static Map<String, Uint8List> _validateServiceData(
       Map<String, Uint8List> data) {
-    return data.map((key, value) {
-      try {
-        return MapEntry(BleUuidParser.string(key), value);
-      } catch (_) {
-        return MapEntry(key, value);
-      }
-    });
+    if (data.isEmpty) return const {};
+    return data.map(
+      (key, value) => MapEntry(
+        BleUuidParser.stringOrNull(key) ?? key,
+        Uint8List.fromList(value),
+      ),
+    );
   }
 
   @Deprecated('Use manufacturerDataList instead')
