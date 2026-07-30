@@ -735,10 +735,12 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
 
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
         let peripheralId = peripheral.uuid.uuidString
-
-        if let index = characteristicWriteWithoutResponseFutures.firstIndex(where: { $0.deviceId == peripheralId }) {
-            let future = characteristicWriteWithoutResponseFutures.remove(at: index)
-            future.result(.success(()))
+        characteristicWriteWithoutResponseFutures.removeAll { future in
+            if future.deviceId == peripheralId {
+                future.result(.success(()))
+                return true
+            }
+            return false
         }
     }
 
