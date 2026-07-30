@@ -662,6 +662,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                 val scanFilters = filter?.toScanFilters(filterServices) ?: emptyList()
                 safeScanner?.startScan(scanFilters, scanSettings, scanCallbackInner)
             }
+            isScanning = true
             PrinterConnectLogger.logInfo("Scan started (usesCustomFilters=$usesCustomFilters)")
         } catch (e: SecurityException) {
             PrinterConnectLogger.logError("SecurityException starting scan: ${e.message}")
@@ -726,7 +727,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
     @SuppressLint("MissingPermission")
     private fun stopScanInternal() {
-        if (!isScanning) return
+        if (!(safeScanner?.isScanning() ?: false)) return
         val adapter = bluetoothAdapter ?: return
         val scanner = adapter.bluetoothLeScanner ?: return
 
@@ -754,7 +755,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     }
 
     override fun isScanning(): Boolean {
-        return isScanning
+        return safeScanner?.isScanning() ?: false
     }
 
     @SuppressLint("MissingPermission")
@@ -1463,7 +1464,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                     interval = 0L,
                     latency = 0L,
                     supervisionTimeout = 0L,
-                    status = status.toLong()
+                    status = mtu.toLong()
                 )
                 postToMainLooper {
                     callbackChannel?.onConnectionParametersUpdated(updated) { _ -> }

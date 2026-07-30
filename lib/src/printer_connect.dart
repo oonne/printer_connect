@@ -329,6 +329,7 @@ class PrinterConnect {
         deviceId,
         BleUuidParser.string(service),
         BleUuidParser.string(characteristic),
+        timeout: timeout ?? _bleCommandQueue.timeout,
       ),
       timeout: timeout,
       deviceId: deviceId,
