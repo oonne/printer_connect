@@ -1,3 +1,7 @@
 ## 0.0.1
 
-* TODO: Describe initial release.
+* Initial release
+
+## 1.0.0
+
+* 新增: 通过BLE蓝牙连接打印机。
