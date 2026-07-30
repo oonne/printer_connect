@@ -1248,22 +1248,37 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             emptyList<BluetoothDevice>()
         }
 
-        val results = connectedDevices.mapNotNull { device ->
-            val deviceServices = getDeviceServiceUuids(device)
-            val matchesFilter = withServices.isEmpty() || deviceServices.isEmpty() || deviceServices.containsAll(withServices)
+        val results = if (withServices.isEmpty()) {
+            connectedDevices.map { device ->
+                UniversalBleScanResult(
+                    deviceId = device.address,
+                    name = device.name,
+                    isPaired = device.isBonded(),
+                    rssi = null,
+                    manufacturerDataList = null,
+                    serviceData = null,
+                    services = getDeviceServiceUuids(device),
+                    timestamp = System.currentTimeMillis()
+                )
+            }
+        } else {
+            connectedDevices.mapNotNull { device ->
+                val deviceServices = getDeviceServiceUuids(device)
+                val matchesFilter = deviceServices.any { withServices.contains(it) }
 
-            if (!matchesFilter) return@mapNotNull null
+                if (!matchesFilter) return@mapNotNull null
 
-            UniversalBleScanResult(
-                deviceId = device.address,
-                name = device.name,
-                isPaired = device.isBonded(),
-                rssi = null,
-                manufacturerDataList = null,
-                serviceData = null,
-                services = deviceServices,
-                timestamp = System.currentTimeMillis()
-            )
+                UniversalBleScanResult(
+                    deviceId = device.address,
+                    name = device.name,
+                    isPaired = device.isBonded(),
+                    rssi = null,
+                    manufacturerDataList = null,
+                    serviceData = null,
+                    services = deviceServices,
+                    timestamp = System.currentTimeMillis()
+                )
+            }
         }
         callback(Result.success(results))
     }

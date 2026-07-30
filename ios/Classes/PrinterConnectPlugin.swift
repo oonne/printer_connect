@@ -477,11 +477,9 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         completion(.success(bleDevices.map { peripheral in
             let id = peripheral.uuid.uuidString
             let name = advertisementNameCache[id] ?? discoveredPeripherals[id]?.name ?? peripheral.name ?? ""
-            let isPaired = peripheral.state == .connected || peripheral.state == .connecting
             return UniversalBleScanResult(
                 deviceId: id,
                 name: name,
-                isPaired: isPaired,
                 serviceData: nil,
                 timestamp: Int64(Date().timeIntervalSince1970 * 1000)
             )
