@@ -221,11 +221,13 @@ fun createFlutterError(
 
 fun Int.parseScanErrorMessage(): String {
     return when (this) {
-        ScanSettings.SCAN_MODE_LOW_POWER -> "Scan mode: low power"
-        ScanSettings.SCAN_MODE_BALANCED -> "Scan mode: balanced"
-        ScanSettings.SCAN_MODE_LOW_LATENCY -> "Scan mode: low latency"
-        ScanSettings.SCAN_MODE_OPPORTUNISTIC -> "Scan mode: opportunistic"
-        else -> "Unknown scan mode: $this"
+        SCAN_FAILED_ALREADY_STARTED -> "SCAN_FAILED_ALREADY_STARTED"
+        SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> "SCAN_FAILED_APPLICATION_REGISTRATION_FAILED"
+        SCAN_FAILED_FEATURE_UNSUPPORTED -> "SCAN_FAILED_FEATURE_UNSUPPORTED"
+        SCAN_FAILED_INTERNAL_ERROR -> "SCAN_FAILED_INTERNAL_ERROR"
+        SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES"
+        SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "SCAN_FAILED_SCANNING_TOO_FREQUENTLY"
+        else -> "ErrorCode: $this"
     }
 }
 

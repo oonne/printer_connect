@@ -1250,7 +1250,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
         val results = connectedDevices.mapNotNull { device ->
             val deviceServices = getDeviceServiceUuids(device)
-            val matchesFilter = withServices.isEmpty() || deviceServices.containsAll(withServices)
+            val matchesFilter = withServices.isEmpty() || deviceServices.isEmpty() || deviceServices.containsAll(withServices)
 
             if (!matchesFilter) return@mapNotNull null
 
@@ -1258,7 +1258,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                 deviceId = device.address,
                 name = device.name,
                 isPaired = device.isBonded(),
-                rssi = 0L,
+                rssi = null,
                 manufacturerDataList = null,
                 serviceData = null,
                 services = deviceServices,

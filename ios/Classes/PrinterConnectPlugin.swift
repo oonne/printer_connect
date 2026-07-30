@@ -557,7 +557,7 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
             deviceId: peripheral.uuid.uuidString,
             name: displayName,
             isPaired: nil,
-            rssi: RSSI.int64Value,
+            rssi: RSSI as? Int64,
             manufacturerDataList: manufacturerDataList,
             serviceData: serviceData,
             services: services?.map { $0.uuidStr },
