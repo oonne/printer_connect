@@ -599,6 +599,6 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   @override
   bool receivesAdvertisements(String deviceId) {
-    return false;
+    return true;
   }
 }

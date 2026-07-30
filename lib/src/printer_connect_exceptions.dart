@@ -14,10 +14,40 @@ class PrinterConnectException implements Exception {
     }
     return 'PrinterConnectException: $message';
   }
+
+  factory PrinterConnectException.fromError(dynamic error) {
+    String message = error.toString();
+    String? code;
+    dynamic details = error;
+    if (error is PlatformException) {
+      message = error.message ?? error.details?.toString() ?? error.code;
+      code = error.code;
+      details = error.details;
+    }
+    return PrinterConnectException(message, code: code, details: details);
+  }
 }
 
 class ConnectionException extends PrinterConnectException {
   ConnectionException(super.message, {super.code, super.details});
+
+  factory ConnectionException.fromError(dynamic error) {
+    String message;
+    String? code;
+    dynamic details;
+
+    if (error is PlatformException) {
+      message = error.message ?? error.details?.toString() ?? error.code;
+      code = error.code;
+      details = error.details;
+    } else {
+      message = error.toString();
+      code = 'connection_error';
+      details = error;
+    }
+
+    return ConnectionException(message, code: code, details: details);
+  }
 }
 
 class PairingException extends PrinterConnectException {

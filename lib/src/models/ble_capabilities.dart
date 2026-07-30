@@ -5,7 +5,11 @@ class BleCapabilities {
 
   static bool get triggersConfirmOnlyPairing => _Platform.isIOS;
 
-  static bool get hasSystemPairingApi => !_Platform.isWeb;
+  static bool get hasSystemPairingApi =>
+      !_Platform.isWeb &&
+      (_Platform.isAndroid ||
+          _Platform.isWindows ||
+          _Platform.isLinux);
 
   static bool get requiresRuntimePermission =>
       _Platform.isAndroid || _Platform.isWeb;
@@ -36,4 +40,10 @@ class _Platform {
 
   static bool get isMacOS =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
+
+  static bool get isWindows =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+  static bool get isLinux =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
 }

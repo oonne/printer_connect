@@ -174,10 +174,7 @@ class PrinterConnect {
         )
         .catchError((error) {
           if (completer.isCompleted) return;
-          completer.completeError(exceptions.ConnectionException(
-            error.toString(),
-            code: 'connection_error',
-          ));
+          completer.completeError(exceptions.ConnectionException.fromError(error));
         });
 
     if (!await completer.future.timeout(timeout)) {
@@ -216,10 +213,7 @@ class PrinterConnect {
           )
           .catchError((error) {
             if (completer.isCompleted) return;
-            completer.completeError(exceptions.ConnectionException(
-              error.toString(),
-              code: 'disconnect_error',
-            ));
+            completer.completeError(exceptions.ConnectionException.fromError(error));
           });
       if (connectionState == BleConnectionState.disconnected ||
           connectionState == BleConnectionState.disconnecting) {
@@ -444,11 +438,25 @@ class PrinterConnect {
     Duration? timeout,
     String? queueId,
   }) async {
-    return _bleCommandQueue.queueCommand(
-      () => _platform.pair(deviceId),
-      deviceId: deviceId,
-      timeout: timeout,
-      queueId: queueId,
+    if (BleCapabilities.hasSystemPairingApi) {
+      final paired = await _bleCommandQueue.queueCommand(
+        () => _platform.pair(deviceId),
+        deviceId: deviceId,
+        timeout: timeout,
+        queueId: queueId,
+      );
+      if (!paired) {
+        throw exceptions.PairingException(
+          'Failed to pair device',
+          code: 'pairing_failed',
+        );
+      }
+      return paired;
+    }
+    // iOS doesn't support system pairing API.
+    throw exceptions.PairingException(
+      'Pairing is not supported on this platform',
+      code: 'not_supported',
     );
   }
 
@@ -549,10 +557,7 @@ class PrinterConnect {
     void handleError(dynamic error) {
       cancelSubscription();
       if (completer.isCompleted) return;
-      completer.completeError(exceptions.ConnectionException(
-        error.toString(),
-        code: 'connection_error',
-      ));
+      completer.completeError(exceptions.ConnectionException.fromError(error));
     }
 
     connectionSubscription = _platform

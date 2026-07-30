@@ -122,12 +122,43 @@ fun Int.parseHciErrorCode(): String? {
         0x1F -> "Unspecified Error"
         0x20 -> "Unsupported LMP Parameter Value / Unsupported LL Parameter Value"
         0x21 -> "Role Change Not Allowed"
-        0x22 -> "Unsupported Remote Feature"
-        0x23 -> "Unsupported LMP Parameter Value"
-        0x24 -> "Unsupported LL Parameter Value"
-        0x25 -> "Invalid LMP Parameters / Invalid LL Parameters"
-        0x26 -> "Unknown Error"
-        else -> "Unknown Error"
+        0x22 -> "LMP Response Timeout / LL Response Timeout"
+        0x23 -> "LMP Error Transaction Collision / LL Procedure Collision"
+        0x24 -> "LMP PDU Not Allowed"
+        0x25 -> "Encryption Mode Not Acceptable"
+        0x26 -> "Link Key cannot be Changed"
+        0x27 -> "Requested QoS Not Supported"
+        0x28 -> "Instant Passed"
+        0x29 -> "Pairing With Unit Key Not Supported"
+        0x2A -> "Different Transaction Collision"
+        0x2B -> "Reserved for future use"
+        0x2C -> "QoS Unacceptable Parameter"
+        0x2D -> "QoS Rejected"
+        0x2E -> "Channel Classification Not Supported"
+        0x2F -> "Insufficient Security"
+        0x30 -> "Parameter Out Of Mandatory Range"
+        0x31 -> "Reserved for future use"
+        0x32 -> "Role Switch Pending"
+        0x33 -> "Reserved for future use"
+        0x34 -> "Reserved Slot Violation"
+        0x35 -> "Role Switch Failed"
+        0x36 -> "Extended Inquiry Response Too Large"
+        0x37 -> "Secure Simple Pairing Not Supported By Host"
+        0x38 -> "Host Busy - Pairing"
+        0x39 -> "Connection Rejected due to No Suitable Channel Found"
+        0x3A -> "Controller Busy"
+        0x3B -> "Unacceptable Connection Parameters"
+        0x3C -> "Advertising Timeout"
+        0x3D -> "Connection Terminated due to MIC Failure"
+        0x3E -> "Connection Failed to be Established / Synchronization Timeout"
+        0x3F -> "MAC Connection Failed"
+        0x40 -> "Coarse Clock Adjustment Rejected but Will Try to Adjust Using Clock Dragging"
+        0x41 -> "Type0 Submap Not Defined"
+        0x42 -> "Unknown Advertising Identifier"
+        0x43 -> "Limit Reached"
+        0x44 -> "Operation Cancelled by Host"
+        0x45 -> "Packet Too Long"
+        else -> "Unknown Error $this"
     }
 }
 
@@ -190,8 +221,9 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                     val deviceAddress = bondStateChange.device.address
                     val bondState = bondStateChange.state
                     val isPaired = bondState == BluetoothDevice.BOND_BONDED
+                    val errorMessage = if (bondState == BluetoothDevice.ERROR) "Failed to Pair" else null
                     handler.post {
-                        callbackChannel?.onPairStateChange(deviceAddress, isPaired, null) { _ -> }
+                        callbackChannel?.onPairStateChange(deviceAddress, isPaired, errorMessage) { _ -> }
                     }
                     PrinterConnectLogger.logDebug("Bond state changed for $deviceAddress: bondState=$bondState, bonded=$isPaired")
 
@@ -200,6 +232,9 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                         when {
                             isPaired -> {
                                 handler.post { pendingCallback.invoke(Result.success(true)) }
+                            }
+                            bondState == BluetoothDevice.ERROR -> {
+                                handler.post { pendingCallback.invoke(Result.failure(createFlutterError(UniversalBleErrorCode.PAIRING_FAILED, "Pairing failed for $deviceAddress"))) }
                             }
                             bondState == BluetoothDevice.BOND_NONE -> {
                                 handler.post { pendingCallback.invoke(Result.failure(createFlutterError(UniversalBleErrorCode.PAIRING_FAILED, "Pairing failed for $deviceAddress"))) }
@@ -1159,14 +1194,14 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     override fun isPaired(deviceId: String, callback: (Result<Boolean>) -> Unit) {
         val adapter = bluetoothAdapter
         if (adapter == null) {
-            callback(Result.success(false))
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.BLUETOOTH_NOT_AVAILABLE, "Bluetooth adapter unavailable")))
             return
         }
         return try {
             val device = adapter.getRemoteDevice(deviceId)
             callback(Result.success(device.isBonded()))
         } catch (e: Exception) {
-            callback(Result.success(false))
+            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, e.toString())))
         }
     }
 
@@ -1180,12 +1215,15 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
         try {
             val device = adapter.getRemoteDevice(deviceId)
+            val pendingFuture = pendingPairResults.remove(deviceId)
+
+            // If already paired, complete any pending futures and return success
             if (device.isBonded()) {
+                pendingFuture?.invoke(Result.success(true))
                 callback(Result.success(true))
                 return
             }
 
-            val pendingFuture = pendingPairResults[deviceId]
             if (pendingFuture != null) {
                 callback(Result.failure(createFlutterError(UniversalBleErrorCode.OPERATION_IN_PROGRESS, "Pairing already in progress")))
                 return
@@ -1495,16 +1533,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         val future = mtuFutures.remove(deviceAddress)
         if (future != null) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                val updated = BleConnectionParametersUpdated(
-                    deviceId = deviceAddress,
-                    interval = 0L,
-                    latency = 0L,
-                    supervisionTimeout = 0L,
-                    status = mtu.toLong()
-                )
-                postToMainLooper {
-                    callbackChannel?.onConnectionParametersUpdated(updated) { _ -> }
-                }
                 handler.post { future.invoke(Result.success(mtu.toLong())) }
             } else {
                 handler.post { future.invoke(Result.failure(createFlutterError(UniversalBleErrorCode.MTU_REQUEST_FAILED, "MTU change failed with status: $status"))) }

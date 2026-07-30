@@ -772,15 +772,9 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateMTU mtu: Int) {
         let peripheralId = peripheral.uuid.uuidString
-
-        let updated = BleConnectionParametersUpdated(
-            deviceId: peripheralId,
-            interval: 0,
-            latency: 0,
-            supervisionTimeout: 0,
-            status: Int64(mtu)
-        )
-        callbackChannel.onConnectionParametersUpdated(update: updated) { _ in }
+        logger.logDebug("MTU updated for \(peripheralId): mtu=\(mtu)")
+        // MTU changes are handled through the requestMtu completion handler,
+        // not through onConnectionParametersUpdated callback
     }
 }
 
