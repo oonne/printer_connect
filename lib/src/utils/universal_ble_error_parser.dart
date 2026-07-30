@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 enum UniversalBleErrorCode {
+  // 0-33: original codes
   unknownError,
   bluetoothNotAvailable,
   bluetoothNotAuthorized,
@@ -37,6 +38,32 @@ enum UniversalBleErrorCode {
   streamNotListening,
   transactionInProgress,
   invalidTransactionId,
+  // 34-58: extended codes matching iOS/Android native enums
+  bluetoothNotEnabled,
+  bluetoothNotAllowed,
+  notPaired,
+  writeNotPermitted,
+  writeRequestBusy,
+  notImplemented,
+  notSupported,
+  readNotPermitted,
+  insufficientAuthentication,
+  insufficientAuthorization,
+  insufficientEncryption,
+  invalidOffset,
+  invalidAttributeLength,
+  invalidHandle,
+  invalidPdu,
+  insufficientKeySize,
+  failed,
+  operationInProgress,
+  connectionInProgress,
+  deviceDisconnected,
+  characteristicDoesNotSupportWrite,
+  characteristicDoesNotSupportWriteWithoutResponse,
+  characteristicDoesNotSupportRead,
+  characteristicDoesNotSupportNotify,
+  characteristicDoesNotSupportIndicate,
 }
 
 class UniversalBleErrorParser {
@@ -225,13 +252,97 @@ class UniversalBleErrorParser {
   /// Parses a numeric error code coming from the native platform.
   /// Both iOS and Android send numeric codes as strings (e.g. "6" for
   /// connection_failed, "11" for write_failed). The Dart-side
-  /// [UniversalBleErrorCode] enum indices (0..33) mirror the Android
-  /// [UniversalBleErrorCode] raw values, so a direct index lookup works
-  /// once the native enums are aligned.
+  /// [UniversalBleErrorCode] enum indices (0..58) mirror the native
+  /// [UniversalBleErrorCode] raw values, so a direct index lookup works.
+  /// GATT/HCI error codes are also mapped to the appropriate error codes.
   static UniversalBleErrorCode? _parseNumericErrorCode(int code) {
+    // First try direct index lookup for codes 0..58
     if (code >= 0 && code < UniversalBleErrorCode.values.length) {
       return UniversalBleErrorCode.values[code];
     }
+
+    // GATT error codes (0x00-0x1F)
+    switch (code) {
+      case 0x00:
+        return UniversalBleErrorCode.unknownError;
+      case 0x01:
+        return UniversalBleErrorCode.invalidHandle;
+      case 0x02:
+        return UniversalBleErrorCode.readNotPermitted;
+      case 0x03:
+        return UniversalBleErrorCode.writeNotPermitted;
+      case 0x04:
+        return UniversalBleErrorCode.invalidPdu;
+      case 0x05:
+        return UniversalBleErrorCode.insufficientAuthentication;
+      case 0x06:
+        return UniversalBleErrorCode.operationNotSupported;
+      case 0x07:
+        return UniversalBleErrorCode.invalidOffset;
+      case 0x08:
+        return UniversalBleErrorCode.insufficientAuthorization;
+      case 0x09:
+        return UniversalBleErrorCode.operationInProgress;
+      case 0x0A:
+        return UniversalBleErrorCode.serviceNotFound;
+      case 0x0B:
+        return UniversalBleErrorCode.invalidAttributeLength;
+      case 0x0C:
+        return UniversalBleErrorCode.insufficientKeySize;
+      case 0x0D:
+        return UniversalBleErrorCode.invalidAttributeLength;
+      case 0x0E:
+        return UniversalBleErrorCode.failed;
+      case 0x0F:
+        return UniversalBleErrorCode.insufficientEncryption;
+      case 0x10:
+        return UniversalBleErrorCode.operationNotSupported;
+      case 0x11:
+        return UniversalBleErrorCode.failed;
+    }
+
+    // HCI error codes
+    switch (code) {
+      // Connection errors
+      case 0x08:
+      case 0x10:
+        return UniversalBleErrorCode.connectionTimeout;
+      case 0x09:
+      case 0x0A:
+        return UniversalBleErrorCode.connectionFailed;
+      case 0x0B:
+        return UniversalBleErrorCode.connectionInProgress;
+      case 0x0C:
+      case 0x11:
+      case 0x12:
+      case 0x1A:
+      case 0x1E:
+      case 0x20:
+        return UniversalBleErrorCode.operationNotSupported;
+      case 0x0D:
+      case 0x0F:
+      case 0x39:
+        return UniversalBleErrorCode.connectionFailed;
+      case 0x0E:
+        return UniversalBleErrorCode.connectionFailed;
+      case 0x13:
+      case 0x14:
+      case 0x15:
+      case 0x16:
+      case 0x3D:
+        return UniversalBleErrorCode.deviceDisconnected;
+      case 0x3E:
+      case 0x3F:
+        return UniversalBleErrorCode.connectionFailed;
+      // Pairing/Authentication errors
+      case 0x05:
+        return UniversalBleErrorCode.insufficientAuthentication;
+      case 0x18:
+        return UniversalBleErrorCode.notPaired;
+      case 0x22:
+        return UniversalBleErrorCode.operationNotSupported;
+    }
+
     return null;
   }
 }
