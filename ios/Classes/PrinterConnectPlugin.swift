@@ -466,29 +466,17 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     }
 
     func getSystemDevices(withServices: [String], completion: @escaping (Result<[UniversalBleScanResult], Error>) -> Void) {
-        let bleDevices: [CBPeripheral]
-        if withServices.isEmpty {
-            // When no service filter is provided, return all system-connected
-            // (or recently discovered) peripherals. This matches Android behavior.
-            let allCached = Array(discoveredPeripherals.values).filter {
-                $0.state == .connected || $0.state == .connecting
-            }
-            // Merge with manager's known peripherals for thoroughness
-            let allKnown = Set(allCached.map { $0.uuid })
-            let connected = manager.peripherals.filter {
-                $0.state == .connected || $0.state == .connecting
-            }
-            bleDevices = allCached + connected.filter { !allKnown.contains($0.uuid) }
-        } else {
-            let filterCBUUID = withServices.map { CBUUID(string: $0) }
-            bleDevices = manager.retrieveConnectedPeripherals(withServices: filterCBUUID)
+        var servicesFilter = withServices
+        if servicesFilter.isEmpty {
+            logger.logInfo("No services filter was set for getting system connected devices. Using default services...")
+            servicesFilter = ["1800", "1801", "180A", "180D", "1810", "181B", "1808", "181D", "1816", "1814", "181A", "1802", "1803", "1804", "1815", "1805", "1807", "1806", "1848", "185E", "180F", "1812", "180E", "1813"]
         }
+        let filterCBUUID = servicesFilter.map { CBUUID(string: $0) }
+        let bleDevices = manager.retrieveConnectedPeripherals(withServices: filterCBUUID)
         bleDevices.forEach { $0.saveCache() }
         completion(.success(bleDevices.map { peripheral in
             let id = peripheral.uuid.uuidString
             let name = advertisementNameCache[id] ?? discoveredPeripherals[id]?.name ?? peripheral.name ?? ""
-            // Peripherals returned by retrieveConnectedPeripherals / known connected
-            // peripherals are connected/paired by the system, so mark them as paired.
             let isPaired = peripheral.state == .connected || peripheral.state == .connecting
             return UniversalBleScanResult(
                 deviceId: id,

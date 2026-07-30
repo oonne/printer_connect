@@ -314,7 +314,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     private fun registerBroadcastReceiver() {
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
-        context?.registerReceiverCompat(broadcastReceiver, filter)
+        context?.registerReceiverCompat(broadcastReceiver, filter, exported = true)
     }
 
     private fun unregisterBroadcastReceiver() {
@@ -871,14 +871,30 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             return
         }
 
+        val wrappedCallback: (Result<List<UniversalBleService>>) -> Unit = { result ->
+            callback(result.map { services ->
+                if (withDescriptors) {
+                    services
+                } else {
+                    services.map { service ->
+                        service.copy(
+                            characteristics = service.characteristics?.map { char ->
+                                char.copy(descriptors = listOf())
+                            }
+                        )
+                    }
+                }
+            })
+        }
+
         cachedServices[deviceId]?.let { services ->
-            callback(Result.success(services))
+            handler.post { wrappedCallback(Result.success(services)) }
             return
         }
 
         try {
             val pendingList = discoverFutures.getOrPut(deviceId) { mutableListOf() }
-            pendingList.add(callback)
+            pendingList.add(wrappedCallback)
 
             if (pendingList.size == 1) {
                 val success = gatt.discoverServices()

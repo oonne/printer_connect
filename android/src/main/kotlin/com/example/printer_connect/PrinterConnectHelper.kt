@@ -88,9 +88,11 @@ fun BluetoothDevice.isBonded(): Boolean = bondState == BluetoothDevice.BOND_BOND
 fun Context.registerReceiverCompat(
     receiver: android.content.BroadcastReceiver,
     filter: IntentFilter,
+    exported: Boolean = false,
 ) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        val receiverFlag = if (exported) Context.RECEIVER_EXPORTED else Context.RECEIVER_NOT_EXPORTED
+        registerReceiver(receiver, filter, receiverFlag)
     } else {
         @Suppress("DEPRECATION")
         registerReceiver(receiver, filter)
