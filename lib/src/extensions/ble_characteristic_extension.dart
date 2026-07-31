@@ -28,24 +28,22 @@ extension BleCharacteristicExtension on BleCharacteristic {
   /// 取消订阅特征的通知或指示
   ///
   /// [timeout] 操作超时时间
-  Future<void> unsubscribe({Duration? timeout}) =>
-      PrinterConnect.unsubscribe(
-        metaData!.deviceId,
-        metaData!.serviceId,
-        uuid,
-        timeout: timeout,
-      );
+  Future<void> unsubscribe({Duration? timeout}) => PrinterConnect.unsubscribe(
+    metaData!.deviceId,
+    metaData!.serviceId,
+    uuid,
+    timeout: timeout,
+  );
 
   /// 读取特征值
   ///
   /// [timeout] 操作超时时间
-  Future<Uint8List> read({Duration? timeout}) =>
-      PrinterConnect.read(
-        metaData!.deviceId,
-        metaData!.serviceId,
-        uuid,
-        timeout: timeout,
-      );
+  Future<Uint8List> read({Duration? timeout}) => PrinterConnect.read(
+    metaData!.deviceId,
+    metaData!.serviceId,
+    uuid,
+    timeout: timeout,
+  );
 
   /// 写入特征值
   ///
@@ -98,7 +96,7 @@ class CharacteristicSubscription {
   final bool isSupported;
 
   CharacteristicSubscription(this._characteristic, this._property)
-      : isSupported = _characteristic.properties.contains(_property);
+    : isSupported = _characteristic.properties.contains(_property);
 
   /// 监听特征值变化
   ///

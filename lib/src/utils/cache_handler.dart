@@ -30,7 +30,8 @@ class CacheHandler {
   }
 
   /// 获取指定设备的缓存蓝牙服务
-  List<BleService>? getServices(String deviceId) => _servicesCache[_key(deviceId)];
+  List<BleService>? getServices(String deviceId) =>
+      _servicesCache[_key(deviceId)];
 
   /// 重置指定设备的缓存，移除所有已存储的服务
   void resetDeviceCache(String deviceId) {

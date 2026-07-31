@@ -46,16 +46,17 @@ class BleDevice {
     this.manufacturerDataList = const [],
     Map<String, Uint8List>? serviceData,
     this.timestamp,
-  })  : rawName = name,
-        name = name?.replaceAll(RegExp(r'[^ -~]'), '').trim(),
-        serviceData = _validateServiceData(serviceData ?? const {});
+  }) : rawName = name,
+       name = name?.replaceAll(RegExp(r'[^ -~]'), '').trim(),
+       serviceData = _validateServiceData(serviceData ?? const {});
 
   /// 验证并规范化服务数据
   ///
   /// 将所有服务 UUID 转换为标准格式，并确保数据字节列表可修改。
   /// 空数据时返回空集合。
   static Map<String, Uint8List> _validateServiceData(
-      Map<String, Uint8List> data) {
+    Map<String, Uint8List> data,
+  ) {
     if (data.isEmpty) return const {};
     return data.map(
       (key, value) => MapEntry(
@@ -108,17 +109,17 @@ class BleDevice {
 
   @override
   int get hashCode => Object.hash(
-        deviceId,
-        name,
-        rawName,
-        rssi,
-        paired,
-        services,
-        isSystemDevice,
-        manufacturerDataList,
-        serviceData,
-        timestamp,
-      );
+    deviceId,
+    name,
+    rawName,
+    rssi,
+    paired,
+    services,
+    isSystemDevice,
+    manufacturerDataList,
+    serviceData,
+    timestamp,
+  );
 
   bool _listEquals(List a, List b) {
     return listEquals(a, b);

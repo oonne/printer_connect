@@ -22,11 +22,15 @@ class _TestableMock extends PrinterConnectPlatformMock {
       true;
 
   @override
-  Future<void> requestPermissions({bool withAndroidFineLocation = false}) async {}
+  Future<void> requestPermissions({
+    bool withAndroidFineLocation = false,
+  }) async {}
 
   @override
-  Future<void> startScan(
-      {ScanFilter? scanFilter, PlatformConfig? platformConfig}) async {}
+  Future<void> startScan({
+    ScanFilter? scanFilter,
+    PlatformConfig? platformConfig,
+  }) async {}
 
   @override
   Future<void> stopScan() async {}
@@ -35,30 +39,46 @@ class _TestableMock extends PrinterConnectPlatformMock {
   Future<bool> isScanning() async => false;
 
   @override
-  Future<void> connect(String deviceId,
-      {bool autoConnect = false,
-      Duration? connectionTimeout,
-      ConnectionPlatformConfig? platformConfig}) async {}
+  Future<void> connect(
+    String deviceId, {
+    bool autoConnect = false,
+    Duration? connectionTimeout,
+    ConnectionPlatformConfig? platformConfig,
+  }) async {}
 
   @override
   Future<void> disconnect(String deviceId) async {}
 
   @override
   Future<List<BleService>> discoverServices(
-      String deviceId, bool withDescriptors) async => [];
+    String deviceId,
+    bool withDescriptors,
+  ) async => [];
 
   @override
-  Future<void> setNotifiable(String deviceId, String service,
-      String characteristic, BleInputProperty bleInputProperty) async {}
+  Future<void> setNotifiable(
+    String deviceId,
+    String service,
+    String characteristic,
+    BleInputProperty bleInputProperty,
+  ) async {}
 
   @override
-  Future<Uint8List> readValue(String deviceId, String service,
-      String characteristic, {Duration? timeout}) async => Uint8List(0);
+  Future<Uint8List> readValue(
+    String deviceId,
+    String service,
+    String characteristic, {
+    Duration? timeout,
+  }) async => Uint8List(0);
 
   @override
-  Future<void> writeValue(String deviceId, String service,
-      String characteristic, Uint8List value,
-      BleOutputProperty bleOutputProperty) async {}
+  Future<void> writeValue(
+    String deviceId,
+    String service,
+    String characteristic,
+    Uint8List value,
+    BleOutputProperty bleOutputProperty,
+  ) async {}
 
   @override
   Future<int> requestMtu(String deviceId, int expectedMtu) async => expectedMtu;
@@ -68,7 +88,9 @@ class _TestableMock extends PrinterConnectPlatformMock {
 
   @override
   Future<void> requestConnectionPriority(
-      String deviceId, BleConnectionPriority priority) async {}
+    String deviceId,
+    BleConnectionPriority priority,
+  ) async {}
 
   @override
   Future<bool> isPaired(String deviceId) async => false;
@@ -84,8 +106,8 @@ class _TestableMock extends PrinterConnectPlatformMock {
       BleConnectionState.disconnected;
 
   @override
-  Future<List<BleDevice>> getSystemDevices(
-      List<String>? withServices) async => [];
+  Future<List<BleDevice>> getSystemDevices(List<String>? withServices) async =>
+      [];
 
   @override
   Future<void> setLogLevel(BleLogLevel logLevel) async {}
@@ -106,8 +128,10 @@ void main() {
     _TestableMock fakePlatform = _TestableMock();
     PrinterConnectPlatform.instance = fakePlatform;
 
-    expect(await PrinterConnect.getBluetoothAvailabilityState(),
-        AvailabilityState.poweredOn);
+    expect(
+      await PrinterConnect.getBluetoothAvailabilityState(),
+      AvailabilityState.poweredOn,
+    );
   });
 
   test('hasPermissions', () async {

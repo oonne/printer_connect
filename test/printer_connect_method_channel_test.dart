@@ -22,11 +22,15 @@ class _FullMock extends PrinterConnectPlatformMock {
       true;
 
   @override
-  Future<void> requestPermissions({bool withAndroidFineLocation = false}) async {}
+  Future<void> requestPermissions({
+    bool withAndroidFineLocation = false,
+  }) async {}
 
   @override
-  Future<void> startScan(
-      {ScanFilter? scanFilter, PlatformConfig? platformConfig}) async {}
+  Future<void> startScan({
+    ScanFilter? scanFilter,
+    PlatformConfig? platformConfig,
+  }) async {}
 
   @override
   Future<void> stopScan() async {}
@@ -35,30 +39,46 @@ class _FullMock extends PrinterConnectPlatformMock {
   Future<bool> isScanning() async => false;
 
   @override
-  Future<void> connect(String deviceId,
-      {bool autoConnect = false,
-      Duration? connectionTimeout,
-      ConnectionPlatformConfig? platformConfig}) async {}
+  Future<void> connect(
+    String deviceId, {
+    bool autoConnect = false,
+    Duration? connectionTimeout,
+    ConnectionPlatformConfig? platformConfig,
+  }) async {}
 
   @override
   Future<void> disconnect(String deviceId) async {}
 
   @override
   Future<List<BleService>> discoverServices(
-      String deviceId, bool withDescriptors) async => [];
+    String deviceId,
+    bool withDescriptors,
+  ) async => [];
 
   @override
-  Future<void> setNotifiable(String deviceId, String service,
-      String characteristic, BleInputProperty bleInputProperty) async {}
+  Future<void> setNotifiable(
+    String deviceId,
+    String service,
+    String characteristic,
+    BleInputProperty bleInputProperty,
+  ) async {}
 
   @override
-  Future<Uint8List> readValue(String deviceId, String service,
-      String characteristic, {Duration? timeout}) async => Uint8List(0);
+  Future<Uint8List> readValue(
+    String deviceId,
+    String service,
+    String characteristic, {
+    Duration? timeout,
+  }) async => Uint8List(0);
 
   @override
-  Future<void> writeValue(String deviceId, String service,
-      String characteristic, Uint8List value,
-      BleOutputProperty bleOutputProperty) async {}
+  Future<void> writeValue(
+    String deviceId,
+    String service,
+    String characteristic,
+    Uint8List value,
+    BleOutputProperty bleOutputProperty,
+  ) async {}
 
   @override
   Future<int> requestMtu(String deviceId, int expectedMtu) async => expectedMtu;
@@ -68,7 +88,9 @@ class _FullMock extends PrinterConnectPlatformMock {
 
   @override
   Future<void> requestConnectionPriority(
-      String deviceId, BleConnectionPriority priority) async {}
+    String deviceId,
+    BleConnectionPriority priority,
+  ) async {}
 
   @override
   Future<bool> isPaired(String deviceId) async => false;
@@ -84,8 +106,8 @@ class _FullMock extends PrinterConnectPlatformMock {
       BleConnectionState.disconnected;
 
   @override
-  Future<List<BleDevice>> getSystemDevices(
-      List<String>? withServices) async => [];
+  Future<List<BleDevice>> getSystemDevices(List<String>? withServices) async =>
+      [];
 
   @override
   Future<void> setLogLevel(BleLogLevel logLevel) async {}
@@ -165,8 +187,7 @@ void main() {
     });
 
     test('discoverServices returns empty list', () async {
-      final result =
-          await PrinterConnect.discoverServices('test-device');
+      final result = await PrinterConnect.discoverServices('test-device');
       expect(result, isEmpty);
     });
 
@@ -181,38 +202,48 @@ void main() {
     });
 
     test('read returns empty list', () async {
-      final result = await PrinterConnect.read(
-          'test-device', '180a', '2a00');
+      final result = await PrinterConnect.read('test-device', '180a', '2a00');
       expect(result, Uint8List(0));
     });
 
     test('write returns normally', () async {
       expect(() async {
         await PrinterConnect.write(
-            'test-device', '180a', '2a00', Uint8List.fromList([1, 2]));
+          'test-device',
+          '180a',
+          '2a00',
+          Uint8List.fromList([1, 2]),
+        );
       }, returnsNormally);
     });
 
     test('subscribeNotifications / unsubscribe returns normally', () async {
       expect(() async {
         await PrinterConnect.subscribeNotifications(
-            'test-device', '180a', '2a00');
-        await PrinterConnect.unsubscribe(
-            'test-device', '180a', '2a00');
+          'test-device',
+          '180a',
+          '2a00',
+        );
+        await PrinterConnect.unsubscribe('test-device', '180a', '2a00');
       }, returnsNormally);
     });
 
     test('subscribeIndications returns normally', () async {
       expect(() async {
         await PrinterConnect.subscribeIndications(
-            'test-device', '180a', '2a00');
+          'test-device',
+          '180a',
+          '2a00',
+        );
       }, returnsNormally);
     });
 
     test('requestConnectionPriority returns normally', () async {
       expect(() async {
         await PrinterConnect.requestConnectionPriority(
-            'test-device', BleConnectionPriority.highPerformance);
+          'test-device',
+          BleConnectionPriority.highPerformance,
+        );
       }, returnsNormally);
     });
 

@@ -113,7 +113,8 @@ class UniversalBleErrorParser {
     } else if (error is ArgumentError) {
       return UniversalBleErrorCode.invalidValue;
     } else if (error is Exception) {
-      return _parseStringErrorCode(error.toString()) ?? UniversalBleErrorCode.unknownError;
+      return _parseStringErrorCode(error.toString()) ??
+          UniversalBleErrorCode.unknownError;
     }
     return UniversalBleErrorCode.unknownError;
   }
@@ -125,10 +126,12 @@ class UniversalBleErrorParser {
     final lowerCode = code.toLowerCase();
 
     if (lowerCode.contains('bluetooth') || lowerCode.contains('ble')) {
-      if (lowerCode.contains('not_available') || lowerCode.contains('unavailable')) {
+      if (lowerCode.contains('not_available') ||
+          lowerCode.contains('unavailable')) {
         return UniversalBleErrorCode.bluetoothNotAvailable;
       }
-      if (lowerCode.contains('not_authorized') || lowerCode.contains('unauthorized')) {
+      if (lowerCode.contains('not_authorized') ||
+          lowerCode.contains('unauthorized')) {
         return UniversalBleErrorCode.bluetoothNotAuthorized;
       }
       if (lowerCode.contains('permission') &&
@@ -153,7 +156,8 @@ class UniversalBleErrorParser {
       if (lowerCode.contains('lost')) {
         return UniversalBleErrorCode.connectionLost;
       }
-      if (lowerCode.contains('not_established') || lowerCode.contains('not_connected')) {
+      if (lowerCode.contains('not_established') ||
+          lowerCode.contains('not_connected')) {
         return UniversalBleErrorCode.connectionNotEstablished;
       }
     }
@@ -205,7 +209,8 @@ class UniversalBleErrorParser {
       return UniversalBleErrorCode.scanFailed;
     }
 
-    if (lowerCode.contains('device_not_found') || lowerCode.contains('peripheral_not_found')) {
+    if (lowerCode.contains('device_not_found') ||
+        lowerCode.contains('peripheral_not_found')) {
       return UniversalBleErrorCode.deviceNotFound;
     }
 
@@ -213,7 +218,8 @@ class UniversalBleErrorParser {
       return UniversalBleErrorCode.invalidValue;
     }
 
-    if (lowerCode.contains('invalid_device_id') || lowerCode.contains('invalid_id')) {
+    if (lowerCode.contains('invalid_device_id') ||
+        lowerCode.contains('invalid_id')) {
       return UniversalBleErrorCode.invalidDeviceId;
     }
 
@@ -221,7 +227,8 @@ class UniversalBleErrorParser {
       return UniversalBleErrorCode.operationCancelled;
     }
 
-    if (lowerCode.contains('not_supported') || lowerCode.contains('unsupported')) {
+    if (lowerCode.contains('not_supported') ||
+        lowerCode.contains('unsupported')) {
       return UniversalBleErrorCode.operationNotSupported;
     }
 

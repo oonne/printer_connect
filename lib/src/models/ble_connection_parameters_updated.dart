@@ -37,13 +37,8 @@ class BleConnectionParametersUpdated {
           status == other.status;
 
   @override
-  int get hashCode => Object.hash(
-        deviceId,
-        interval,
-        latency,
-        supervisionTimeout,
-        status,
-      );
+  int get hashCode =>
+      Object.hash(deviceId, interval, latency, supervisionTimeout, status);
 
   @override
   String toString() =>

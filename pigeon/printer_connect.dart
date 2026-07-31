@@ -10,7 +10,6 @@ import 'package:pigeon/pigeon.dart';
     swiftOptions: SwiftOptions(),
   ),
 )
-
 class UniversalBleScanResult {
   final String deviceId;
   final String? name;
@@ -44,36 +43,15 @@ enum AvailabilityState {
   poweredOn,
 }
 
-enum BleConnectionState {
-  connected,
-  disconnected,
-  connecting,
-  disconnecting,
-}
+enum BleConnectionState { connected, disconnected, connecting, disconnecting }
 
-enum BleInputProperty {
-  disabled,
-  notification,
-  indication,
-}
+enum BleInputProperty { disabled, notification, indication }
 
-enum BleOutputProperty {
-  withResponse,
-  withoutResponse,
-}
+enum BleOutputProperty { withResponse, withoutResponse }
 
-enum BleConnectionPriority {
-  balanced,
-  highPerformance,
-  lowPower,
-}
+enum BleConnectionPriority { balanced, highPerformance, lowPower }
 
-enum AndroidScanMode {
-  balanced,
-  lowLatency,
-  lowPower,
-  opportunistic,
-}
+enum AndroidScanMode { balanced, lowLatency, lowPower, opportunistic }
 
 enum AndroidScanCallbackType {
   allMatches,
@@ -82,16 +60,9 @@ enum AndroidScanCallbackType {
   allMatchesAutoBatch,
 }
 
-enum AndroidScanMatchMode {
-  aggressive,
-  sticky,
-}
+enum AndroidScanMatchMode { aggressive, sticky }
 
-enum AndroidScanNumOfMatches {
-  one,
-  few,
-  max,
-}
+enum AndroidScanNumOfMatches { one, few, max }
 
 enum CharacteristicProperty {
   broadcast,
@@ -297,13 +268,15 @@ abstract class UniversalBleCallbackChannel {
 }
 
 void main() {
-  Pigeon.runWithOptions(PigeonOptions(
-    input: 'pigeon/printer_connect.dart',
-    dartOut: 'lib/src/printer_connect.g.dart',
-    kotlinOut:
-        'android/src/main/kotlin/com/example/printer_connect/PrinterConnect.g.kt',
-    swiftOut: 'ios/Classes/PrinterConnect.g.swift',
-    kotlinOptions: KotlinOptions(package: 'com.example.printer_connect'),
-    swiftOptions: SwiftOptions(),
-  ));
+  Pigeon.runWithOptions(
+    PigeonOptions(
+      input: 'pigeon/printer_connect.dart',
+      dartOut: 'lib/src/printer_connect.g.dart',
+      kotlinOut:
+          'android/src/main/kotlin/com/example/printer_connect/PrinterConnect.g.kt',
+      swiftOut: 'ios/Classes/PrinterConnect.g.swift',
+      kotlinOptions: KotlinOptions(package: 'com.example.printer_connect'),
+      swiftOptions: SwiftOptions(),
+    ),
+  );
 }

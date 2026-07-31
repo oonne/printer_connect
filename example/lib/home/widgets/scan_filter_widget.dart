@@ -57,7 +57,8 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
             throw Exception("Invalid Manufacturer Data $manufacturer");
           }
           manufacturerDataFilters.add(
-              ManufacturerDataFilter(companyIdentifier: companyIdentifier));
+            ManufacturerDataFilter(companyIdentifier: companyIdentifier),
+          );
         }
       }
 
@@ -73,9 +74,9 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
             withManufacturerData: manufacturerDataFilters,
           ),
         );
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Filters Applied")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Filters Applied")));
       }
       Navigator.pop(context);
     } catch (e) {
@@ -141,26 +142,17 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Expanded(
-                child: PlatformButton(
-                  text: 'Apply',
-                  onPressed: applyFilter,
-                ),
+                child: PlatformButton(text: 'Apply', onPressed: applyFilter),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: PlatformButton(
-                  text: 'Clear',
-                  onPressed: clearFilter,
-                ),
+                child: PlatformButton(text: 'Clear', onPressed: clearFilter),
               ),
             ],
           ),
           const SizedBox(height: 10),
           if (error != null)
-            Text(
-              error!,
-              style: const TextStyle(color: Colors.red),
-            ),
+            Text(error!, style: const TextStyle(color: Colors.red)),
           const SizedBox(height: 10),
         ],
       ),

@@ -48,7 +48,8 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
   AndroidOptions? _build() {
     final delayText = _reportDelayController.text.trim();
     final reportDelay = delayText.isEmpty ? null : int.tryParse(delayText);
-    final hasAny = _scanMode != null ||
+    final hasAny =
+        _scanMode != null ||
         reportDelay != null ||
         _callbackType.isNotEmpty ||
         _matchMode != null ||
@@ -58,8 +59,9 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
     return AndroidOptions(
       scanMode: _scanMode,
       reportDelayMillis: reportDelay,
-      callbackType:
-          _callbackType.isEmpty ? null : _callbackType.toList(growable: false),
+      callbackType: _callbackType.isEmpty
+          ? null
+          : _callbackType.toList(growable: false),
       matchMode: _matchMode,
       numOfMatches: _numOfMatches,
       legacy: _legacy,
@@ -107,22 +109,25 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
             ),
             const SizedBox(height: 16),
             _SectionTitle(
-                'callbackType (multi-select; OR-folded by the plugin)'),
+              'callbackType (multi-select; OR-folded by the plugin)',
+            ),
             Wrap(
               spacing: 8,
               runSpacing: 4,
               children: AndroidScanCallbackType.values
-                  .map((v) => FilterChip(
-                        label: Text(v.name),
-                        selected: _callbackType.contains(v),
-                        onSelected: (selected) => setState(() {
-                          if (selected) {
-                            _callbackType.add(v);
-                          } else {
-                            _callbackType.remove(v);
-                          }
-                        }),
-                      ))
+                  .map(
+                    (v) => FilterChip(
+                      label: Text(v.name),
+                      selected: _callbackType.contains(v),
+                      onSelected: (selected) => setState(() {
+                        if (selected) {
+                          _callbackType.add(v);
+                        } else {
+                          _callbackType.remove(v);
+                        }
+                      }),
+                    ),
+                  )
                   .toList(growable: false),
             ),
             const SizedBox(height: 16),
@@ -198,9 +203,9 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
-      );
+    padding: const EdgeInsets.only(bottom: 4),
+    child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
+  );
 }
 
 class _SingleSelect<T> extends StatelessWidget {
@@ -227,11 +232,13 @@ class _SingleSelect<T> extends StatelessWidget {
           selected: selected == null,
           onSelected: (_) => onChanged(null),
         ),
-        ...values.map((v) => ChoiceChip(
-              label: Text(label(v)),
-              selected: selected == v,
-              onSelected: (sel) => onChanged(sel ? v : null),
-            )),
+        ...values.map(
+          (v) => ChoiceChip(
+            label: Text(label(v)),
+            selected: selected == v,
+            onSelected: (sel) => onChanged(sel ? v : null),
+          ),
+        ),
       ],
     );
   }

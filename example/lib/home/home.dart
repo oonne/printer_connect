@@ -72,13 +72,13 @@ class _CentralHomeState extends State<CentralHome> {
   }
 
   void trackAvailabilityState() {
-    _availabilityStreamSubscription = PrinterConnect.availabilityStream.listen(
-      (state) {
-        setState(() {
-          bleAvailabilityState = state;
-        });
-      },
-    );
+    _availabilityStreamSubscription = PrinterConnect.availabilityStream.listen((
+      state,
+    ) {
+      setState(() {
+        bleAvailabilityState = state;
+      });
+    });
     setState(() {});
   }
 
@@ -96,7 +96,8 @@ class _CentralHomeState extends State<CentralHome> {
     if ((defaultTargetPlatform == TargetPlatform.iOS) &&
         (scanFilter?.withServices ?? []).isEmpty) {
       showSnackbar(
-          "No services filter was set for getting system connected devices. Using default services...");
+        "No services filter was set for getting system connected devices. Using default services...",
+      );
     }
 
     List<BleDevice> devices = await PrinterConnect.getSystemDevices(
@@ -148,9 +149,9 @@ class _CentralHomeState extends State<CentralHome> {
   }
 
   void showSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -179,11 +180,10 @@ class _CentralHomeState extends State<CentralHome> {
                   const Padding(
                     padding: EdgeInsets.all(8.0),
                     child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator.adaptive(
-                          strokeWidth: 2,
-                        )),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                    ),
                   ),
               ],
             )
@@ -352,30 +352,30 @@ class _CentralHomeState extends State<CentralHome> {
             child: _isScanning && _bleDevices.isEmpty
                 ? const Center(child: CircularProgressIndicator.adaptive())
                 : !_isScanning && _bleDevices.isEmpty
-                    ? const ScannedDevicesPlaceholderWidget()
-                    : ListView.separated(
-                        itemCount: _bleDevices.length,
-                        separatorBuilder: (context, index) => const Divider(),
-                        itemBuilder: (context, index) {
-                          BleDevice device =
-                              _bleDevices[_bleDevices.length - index - 1];
-                          return ScannedItemWidget(
-                            bleDevice: device,
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PeripheralDetailPage(device),
-                                ),
-                              );
-                              PrinterConnect.stopScan();
-                              setState(() {
-                                _isScanning = false;
-                              });
-                            },
+                ? const ScannedDevicesPlaceholderWidget()
+                : ListView.separated(
+                    itemCount: _bleDevices.length,
+                    separatorBuilder: (context, index) => const Divider(),
+                    itemBuilder: (context, index) {
+                      BleDevice device =
+                          _bleDevices[_bleDevices.length - index - 1];
+                      return ScannedItemWidget(
+                        bleDevice: device,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PeripheralDetailPage(device),
+                            ),
                           );
+                          PrinterConnect.stopScan();
+                          setState(() {
+                            _isScanning = false;
+                          });
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

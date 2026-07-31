@@ -43,21 +43,15 @@ void main() {
       final release = Completer<void>();
       final secondStarted = Completer<void>();
 
-      final first = commandQueue.queueCommand(
-        () async {
-          firstStarted.complete();
-          await release.future;
-          order.add(1);
-        },
-        queueId: null,
-      );
-      final second = commandQueue.queueCommand(
-        () async {
-          secondStarted.complete();
-          order.add(2);
-        },
-        queueId: null,
-      );
+      final first = commandQueue.queueCommand(() async {
+        firstStarted.complete();
+        await release.future;
+        order.add(1);
+      }, queueId: null);
+      final second = commandQueue.queueCommand(() async {
+        secondStarted.complete();
+        order.add(2);
+      }, queueId: null);
 
       await firstStarted.future;
       expect(order, isEmpty);
@@ -70,41 +64,38 @@ void main() {
       expect(order, [1, 2]);
     });
 
-    test('custom queueId creates an independent queue in global mode', () async {
-      final commandQueue = BleCommandQueue();
-      final order = <String>[];
+    test(
+      'custom queueId creates an independent queue in global mode',
+      () async {
+        final commandQueue = BleCommandQueue();
+        final order = <String>[];
 
-      final releaseDefault = Completer<void>();
-      final releaseCustom = Completer<void>();
+        final releaseDefault = Completer<void>();
+        final releaseCustom = Completer<void>();
 
-      commandQueue.queueCommand(
-        () async {
+        commandQueue.queueCommand(() async {
           await releaseDefault.future;
           order.add('default');
-        },
-        queueId: null,
-      );
-      commandQueue.queueCommand(
-        () async {
+        }, queueId: null);
+        commandQueue.queueCommand(() async {
           await releaseCustom.future;
           order.add('custom');
-        },
-        queueId: 'tilta',
-      );
+        }, queueId: 'tilta');
 
-      await pumpEventQueue();
-      expect(order, isEmpty);
+        await pumpEventQueue();
+        expect(order, isEmpty);
 
-      releaseCustom.complete();
-      await pumpEventQueue();
+        releaseCustom.complete();
+        await pumpEventQueue();
 
-      expect(order, ['custom']);
+        expect(order, ['custom']);
 
-      releaseDefault.complete();
-      await pumpEventQueue();
+        releaseDefault.complete();
+        await pumpEventQueue();
 
-      expect(order, ['custom', 'default']);
-    });
+        expect(order, ['custom', 'default']);
+      },
+    );
 
     test('perDevice queue isolates commands by device', () async {
       final commandQueue = BleCommandQueue(queueType: QueueType.perDevice);
@@ -114,21 +105,15 @@ void main() {
       final releaseB = Completer<void>();
       final deviceBStarted = Completer<void>();
 
-      commandQueue.queueCommand(
-        () async {
-          await releaseA.future;
-          order.add('device-a');
-        },
-        deviceId: 'device-a',
-      );
-      commandQueue.queueCommand(
-        () async {
-          deviceBStarted.complete();
-          await releaseB.future;
-          order.add('device-b');
-        },
-        deviceId: 'device-b',
-      );
+      commandQueue.queueCommand(() async {
+        await releaseA.future;
+        order.add('device-a');
+      }, deviceId: 'device-a');
+      commandQueue.queueCommand(() async {
+        deviceBStarted.complete();
+        await releaseB.future;
+        order.add('device-b');
+      }, deviceId: 'device-b');
 
       await deviceBStarted.future;
       expect(order, isEmpty);
@@ -235,13 +220,10 @@ void main() {
       final release = Completer<void>();
       final started = Completer<void>();
 
-      final first = commandQueue.queueCommand(
-        () async {
-          started.complete();
-          await release.future;
-        },
-        queueId: 'tilta',
-      );
+      final first = commandQueue.queueCommand(() async {
+        started.complete();
+        await release.future;
+      }, queueId: 'tilta');
       commandQueue.queueCommand(() async {}, queueId: 'tilta');
       commandQueue.queueCommand(() async {}, queueId: 'tilta');
 
@@ -255,48 +237,45 @@ void main() {
       expect(updates['tilta']!.last, 0);
     });
 
-    test('clearQueue cancels pending commands for a specific queue id', () async {
-      final commandQueue = BleCommandQueue();
-      final order = <String>[];
+    test(
+      'clearQueue cancels pending commands for a specific queue id',
+      () async {
+        final commandQueue = BleCommandQueue();
+        final order = <String>[];
 
-      final release = Completer<void>();
-      final started = Completer<void>();
+        final release = Completer<void>();
+        final started = Completer<void>();
 
-      commandQueue.queueCommand(
-        () async {
+        commandQueue.queueCommand(() async {
           started.complete();
           await release.future;
           order.add('in-flight');
-        },
-        queueId: 'tilta',
-      );
-      final pending = commandQueue.queueCommand(
-        () async {
+        }, queueId: 'tilta');
+        final pending = commandQueue.queueCommand(() async {
           order.add('pending');
           return 'pending';
-        },
-        queueId: 'tilta',
-      );
+        }, queueId: 'tilta');
 
-      await started.future;
-      commandQueue.clearQueue('tilta');
+        await started.future;
+        commandQueue.clearQueue('tilta');
 
-      await expectLater(
-        pending,
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'message',
-            contains('Queue Cancelled'),
+        await expectLater(
+          pending,
+          throwsA(
+            isA<Exception>().having(
+              (e) => e.toString(),
+              'message',
+              contains('Queue Cancelled'),
+            ),
           ),
-        ),
-      );
+        );
 
-      release.complete();
-      await pumpEventQueue();
+        release.complete();
+        await pumpEventQueue();
 
-      expect(order, ['in-flight']);
-    });
+        expect(order, ['in-flight']);
+      },
+    );
 
     test('clearQueue without id clears all queues', () async {
       final commandQueue = BleCommandQueue();
@@ -305,20 +284,14 @@ void main() {
       final defaultStarted = Completer<void>();
       final customStarted = Completer<void>();
 
-      commandQueue.queueCommand(
-        () async {
-          defaultStarted.complete();
-          await releaseDefault.future;
-        },
-        queueId: null,
-      );
-      commandQueue.queueCommand(
-        () async {
-          customStarted.complete();
-          await releaseCustom.future;
-        },
-        queueId: 'tilta',
-      );
+      commandQueue.queueCommand(() async {
+        defaultStarted.complete();
+        await releaseDefault.future;
+      }, queueId: null);
+      commandQueue.queueCommand(() async {
+        customStarted.complete();
+        await releaseCustom.future;
+      }, queueId: 'tilta');
 
       final pendingDefault = commandQueue.queueCommand(
         () async {},

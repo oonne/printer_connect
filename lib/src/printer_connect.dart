@@ -177,7 +177,9 @@ class PrinterConnect {
         )
         .catchError((error) {
           if (completer.isCompleted) return;
-          completer.completeError(exceptions.ConnectionException.fromError(error));
+          completer.completeError(
+            exceptions.ConnectionException.fromError(error),
+          );
         });
 
     if (!await completer.future.timeout(timeout)) {
@@ -218,7 +220,9 @@ class PrinterConnect {
           )
           .catchError((error) {
             if (completer.isCompleted) return;
-            completer.completeError(exceptions.ConnectionException.fromError(error));
+            completer.completeError(
+              exceptions.ConnectionException.fromError(error),
+            );
           });
       if (connectionState == BleConnectionState.disconnected ||
           connectionState == BleConnectionState.disconnecting) {
@@ -574,7 +578,9 @@ class PrinterConnect {
         .bleConnectionUpdateStreamController
         .stream
         // 大小写不敏感的设备ID匹配：支持 MAC 地址（Android/Windows/Linux）和 UUID（Apple）的不同大小写格式
-        .where((e) => e.deviceId == deviceId || e.deviceId.toLowerCase() == target)
+        .where(
+          (e) => e.deviceId == deviceId || e.deviceId.toLowerCase() == target,
+        )
         .listen(
           (e) {
             cancelSubscription();

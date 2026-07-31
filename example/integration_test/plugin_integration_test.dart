@@ -6,7 +6,9 @@ import 'package:printer_connect/printer_connect.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('getBluetoothAvailabilityState test', (WidgetTester tester) async {
+  testWidgets('getBluetoothAvailabilityState test', (
+    WidgetTester tester,
+  ) async {
     final state = await PrinterConnect.getBluetoothAvailabilityState();
     expect(state, isNotNull);
     expect(state, isA<AvailabilityState>());

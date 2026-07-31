@@ -36,8 +36,10 @@ class ResultWidget extends StatelessWidget {
             return InkWell(
               onTap: () => onClearTap(index),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 2,
+                ),
                 child: Text(results[index]),
               ),
             );

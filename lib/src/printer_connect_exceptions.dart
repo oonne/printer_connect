@@ -91,21 +91,24 @@ class MtuException extends PrinterConnectException {
 /// Web 蓝牙全局禁用异常，浏览器设置中未启用 Web Bluetooth 时抛出
 class WebBluetoothGloballyDisabled extends PrinterConnectException {
   WebBluetoothGloballyDisabled()
-      : super('Web Bluetooth is globally disabled. Please enable it in the browser settings.');
+    : super(
+        'Web Bluetooth is globally disabled. Please enable it in the browser settings.',
+      );
 }
 
 /// 设备未找到异常类，用于处理设备、服务、特征或描述符查找失败的错误
 class DeviceNotFoundException extends PrinterConnectException {
   DeviceNotFoundException([String? message])
-      : super(message ?? 'Device not found',
-            code: 'device_not_found');
+    : super(message ?? 'Device not found', code: 'device_not_found');
 }
 
 /// 操作不支持异常类，用于处理当前平台不支持的操作
 class OperationNotSupportedException extends PrinterConnectException {
   OperationNotSupportedException([String? message])
-      : super(message ?? 'Operation not supported on this platform',
-            code: 'operation_not_supported');
+    : super(
+        message ?? 'Operation not supported on this platform',
+        code: 'operation_not_supported',
+      );
 }
 
 /// 错误解析器，将原生层（iOS/Android）返回的错误码映射为对应的异常类型
@@ -130,8 +133,7 @@ PrinterConnectException errorParser(PlatformException e) {
       case 10: // disconnectionFailed 断开失败
       case 52: // connectionInProgress 连接进行中
       case 53: // deviceDisconnected 设备已断开
-        return ConnectionException(message,
-            code: code, details: details);
+        return ConnectionException(message, code: code, details: details);
       // 11-12: 读取/写入错误（Read/Write errors）
       case 11: // writeFailed 写入失败
       case 37: // writeNotPermitted 写入未授权
@@ -145,8 +147,7 @@ PrinterConnectException errorParser(PlatformException e) {
         return ReadException(message, code: code, details: details);
       // 13: 服务发现错误（Discover services errors）
       case 13: // discoverServicesFailed 服务发现失败
-        return DiscoverServicesException(message,
-            code: code, details: details);
+        return DiscoverServicesException(message, code: code, details: details);
       // 14-15: 通知/指示错误（Notify/Indicate errors）
       case 14: // setNotifyFailed 设置通知失败
       case 15: // setIndicateFailed 设置指示失败
@@ -191,23 +192,19 @@ PrinterConnectException errorParser(PlatformException e) {
       case 42: // insufficientAuthentication 认证不足
       case 43: // insufficientAuthorization 授权不足
       case 44: // insufficientEncryption 加密不足
-        return ConnectionException(message,
-            code: code, details: details);
+        return ConnectionException(message, code: code, details: details);
       // 30-31: 流错误（Stream errors）
       case 30: // streamAlreadyListening 流已在监听
       case 31: // streamNotListening 流未在监听
-        return PrinterConnectException(message,
-            code: code, details: details);
+        return PrinterConnectException(message, code: code, details: details);
       // 32-33: 事务错误（Transaction errors）
       case 32: // transactionInProgress 事务进行中
       case 33: // invalidTransactionId 无效事务ID
-        return PrinterConnectException(message,
-            code: code, details: details);
+        return PrinterConnectException(message, code: code, details: details);
       // 34-35: 蓝牙状态错误（Bluetooth state errors）
       case 34: // bluetoothNotEnabled 蓝牙未启用
       case 35: // bluetoothNotAllowed 蓝牙未被允许
-        return PrinterConnectException(message,
-            code: code, details: details);
+        return PrinterConnectException(message, code: code, details: details);
     }
   }
 
@@ -218,8 +215,7 @@ PrinterConnectException errorParser(PlatformException e) {
     case 'already_connecting':
       return ConnectionException(message, code: code, details: details);
     case 'disconnect_error':
-      return ConnectionException(message,
-          code: code, details: details);
+      return ConnectionException(message, code: code, details: details);
     case 'pairing_error':
     case 'pair_error':
       return PairingException(message, code: code, details: details);
@@ -234,8 +230,7 @@ PrinterConnectException errorParser(PlatformException e) {
       return ScanException(message, code: code, details: details);
     case 'discover_services_error':
     case 'discover_services_failed':
-      return DiscoverServicesException(message,
-          code: code, details: details);
+      return DiscoverServicesException(message, code: code, details: details);
     case 'set_notify_error':
     case 'set_notify_failed':
       return SetNotifyException(message, code: code, details: details);

@@ -10,10 +10,8 @@ class BleService {
   /// 该服务下的特征列表
   final List<BleCharacteristic> characteristics;
 
-  BleService({
-    required String uuid,
-    this.characteristics = const [],
-  }) : uuid = BleUuidParser.string(uuid);
+  BleService({required String uuid, this.characteristics = const []})
+    : uuid = BleUuidParser.string(uuid);
 
   @override
   bool operator ==(Object other) =>
@@ -68,8 +66,11 @@ class BleCharacteristic {
     this.descriptors = const [],
     required String deviceId,
     required String serviceId,
-  })  : metaData = (deviceId: deviceId, serviceId: BleUuidParser.string(serviceId)),
-        uuid = BleUuidParser.string(uuid);
+  }) : metaData = (
+         deviceId: deviceId,
+         serviceId: BleUuidParser.string(serviceId),
+       ),
+       uuid = BleUuidParser.string(uuid);
 
   @override
   bool operator ==(Object other) =>
@@ -102,9 +103,7 @@ class BleCharacteristic {
 class BleDescriptor {
   final String uuid;
 
-  const BleDescriptor({
-    required this.uuid,
-  });
+  const BleDescriptor({required this.uuid});
 
   @override
   bool operator ==(Object other) =>
@@ -127,7 +126,8 @@ CharacteristicProperty _propertyFromName(String name) {
 CharacteristicProperty _parseCharacteristicProperty(String value) {
   return CharacteristicProperty.values.firstWhere(
     (e) => e.name == value,
-    orElse: () => throw ArgumentError('Unknown characteristic property: $value'),
+    orElse: () =>
+        throw ArgumentError('Unknown characteristic property: $value'),
   );
 }
 

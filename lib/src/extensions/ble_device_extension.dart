@@ -28,13 +28,12 @@ extension BleDeviceExtension on BleDevice {
     bool autoConnect = false,
     Duration? timeout,
     ConnectionPlatformConfig? platformConfig,
-  }) =>
-      PrinterConnect.connect(
-        deviceId,
-        autoConnect: autoConnect,
-        timeout: timeout,
-        platformConfig: platformConfig,
-      );
+  }) => PrinterConnect.connect(
+    deviceId,
+    autoConnect: autoConnect,
+    timeout: timeout,
+    platformConfig: platformConfig,
+  );
 
   /// 断开设备连接
   Future<void> disconnect() => PrinterConnect.disconnect(deviceId);
@@ -48,25 +47,15 @@ extension BleDeviceExtension on BleDevice {
   /// 检查设备是否已配对
   ///
   /// [timeout] 操作超时时间
-  Future<bool> isPaired({
-    Duration? timeout,
-  }) {
-    return PrinterConnect.isPaired(
-      deviceId,
-      timeout: timeout,
-    );
+  Future<bool> isPaired({Duration? timeout}) {
+    return PrinterConnect.isPaired(deviceId, timeout: timeout);
   }
 
   /// 与设备配对
   ///
   /// [timeout] 操作超时时间
-  Future<void> pair({
-    Duration? timeout,
-  }) {
-    return PrinterConnect.pair(
-      deviceId,
-      timeout: timeout,
-    );
+  Future<void> pair({Duration? timeout}) {
+    return PrinterConnect.pair(deviceId, timeout: timeout);
   }
 
   /// 取消与设备的配对
@@ -106,9 +95,7 @@ extension BleDeviceExtension on BleDevice {
       discoveredServices = CacheHandler.instance.getServices(deviceId) ?? [];
     }
     if (discoveredServices.isEmpty) {
-      discoveredServices = await discoverServices(
-        timeout: timeout,
-      );
+      discoveredServices = await discoverServices(timeout: timeout);
     }
     if (discoveredServices.isEmpty) {
       throw PrinterConnectException(
