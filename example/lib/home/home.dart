@@ -1,0 +1,384 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:printer_connect/printer_connect.dart';
+import 'package:printer_connect_example/data/mock_printer_connect.dart';
+import 'package:printer_connect_example/home/widgets/android_scan_options_widget.dart';
+import 'package:printer_connect_example/home/widgets/scan_filter_widget.dart';
+import 'package:printer_connect_example/home/widgets/scanned_devices_placeholder_widget.dart';
+import 'package:printer_connect_example/home/widgets/scanned_item_widget.dart';
+import 'package:printer_connect_example/peripheral_details/peripheral_detail_page.dart';
+import 'package:printer_connect_example/widgets/platform_button.dart';
+import 'package:printer_connect_example/widgets/responsive_buttons_grid.dart';
+
+class CentralHome extends StatefulWidget {
+  final bool showAppBar;
+  const CentralHome({super.key, this.showAppBar = true});
+
+  @override
+  State createState() => _CentralHomeState();
+}
+
+class _CentralHomeState extends State<CentralHome> {
+  final _bleDevices = <BleDevice>[];
+  final _hiddenDevices = <BleDevice>[];
+  bool _isScanning = false;
+  QueueType _queueType = QueueType.global;
+  TextEditingController servicesFilterController = TextEditingController();
+  TextEditingController namePrefixController = TextEditingController();
+  TextEditingController manufacturerDataController = TextEditingController();
+  StreamSubscription<AvailabilityState>? _availabilityStreamSubscription;
+
+  bool get isTrackingAvailabilityState =>
+      _availabilityStreamSubscription != null;
+  AvailabilityState? bleAvailabilityState;
+  ScanFilter? scanFilter;
+  AndroidOptions? _androidOptions;
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (const bool.fromEnvironment('MOCK')) {
+      PrinterConnect.setInstance(MockPrinterConnect());
+    }
+
+    PrinterConnect.queueType = _queueType;
+    PrinterConnect.timeout = const Duration(seconds: 10);
+
+    PrinterConnect.scanStream.listen((result) {
+      if (_hiddenDevices.any((e) => e.deviceId == result.deviceId)) {
+        return;
+      }
+      int index = _bleDevices.indexWhere((e) => e.deviceId == result.deviceId);
+      if (index == -1) {
+        _bleDevices.add(result);
+      } else {
+        if (result.name == null && _bleDevices[index].name != null) {
+          result.name = _bleDevices[index].name;
+        }
+        _bleDevices[index] = result;
+      }
+      setState(() {});
+    });
+
+    PrinterConnect.isScanning().then((value) {
+      debugPrint("Is Scanning: $value");
+      setState(() {
+        _isScanning = value;
+      });
+    });
+  }
+
+  void trackAvailabilityState() {
+    _availabilityStreamSubscription = PrinterConnect.availabilityStream.listen(
+      (state) {
+        setState(() {
+          bleAvailabilityState = state;
+        });
+      },
+    );
+    setState(() {});
+  }
+
+  Future<void> startScan() async {
+    final platformConfig = _androidOptions == null
+        ? null
+        : PlatformConfig(android: _androidOptions);
+    await PrinterConnect.startScan(
+      scanFilter: scanFilter,
+      platformConfig: platformConfig,
+    );
+  }
+
+  Future<void> _getSystemDevices() async {
+    if ((defaultTargetPlatform == TargetPlatform.iOS) &&
+        (scanFilter?.withServices ?? []).isEmpty) {
+      showSnackbar(
+          "No services filter was set for getting system connected devices. Using default services...");
+    }
+
+    List<BleDevice> devices = await PrinterConnect.getSystemDevices(
+      withServices: scanFilter?.withServices,
+    );
+    if (devices.isEmpty) {
+      showSnackbar("No System Connected Devices Found");
+    }
+    setState(() {
+      _bleDevices.clear();
+      _bleDevices.addAll(devices);
+    });
+  }
+
+  void _showScanFilterBottomSheet() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      context: context,
+      builder: (context) {
+        return ScanFilterWidget(
+          servicesFilterController: servicesFilterController,
+          namePrefixController: namePrefixController,
+          manufacturerDataController: manufacturerDataController,
+          onScanFilter: (ScanFilter? filter) {
+            setState(() {
+              scanFilter = filter;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  void _showAndroidScanOptionsBottomSheet() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      context: context,
+      builder: (context) {
+        return AndroidScanOptionsWidget(
+          initial: _androidOptions,
+          onChanged: (AndroidOptions? options) {
+            setState(() {
+              _androidOptions = options;
+            });
+          },
+        );
+      },
+    );
+  }
+
+  void showSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
+  void dispose() {
+    _availabilityStreamSubscription?.cancel();
+    servicesFilterController.dispose();
+    namePrefixController.dispose();
+    manufacturerDataController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    if (mounted) super.setState(fn);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: widget.showAppBar
+          ? AppBar(
+              title: const Text('Printer Connect - Central'),
+              elevation: 4,
+              actions: [
+                if (_isScanning)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 2,
+                        )),
+                  ),
+              ],
+            )
+          : null,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: ResponsiveButtonsGrid(
+              children: [
+                PlatformButton(
+                  text: 'Start Scan',
+                  onPressed: () async {
+                    setState(() {
+                      _bleDevices.clear();
+                      _isScanning = true;
+                    });
+                    try {
+                      await startScan();
+                    } catch (e) {
+                      setState(() {
+                        _isScanning = false;
+                      });
+                      showSnackbar(e.toString());
+                    }
+                  },
+                ),
+                PlatformButton(
+                  text: 'Stop Scan',
+                  onPressed: () async {
+                    await PrinterConnect.stopScan();
+                    setState(() {
+                      _isScanning = false;
+                    });
+                  },
+                ),
+                if (BleCapabilities.supportsBluetoothEnableApi)
+                  bleAvailabilityState != AvailabilityState.poweredOn
+                      ? PlatformButton(
+                          text: 'Enable Bluetooth',
+                          onPressed: () async {
+                            bool isEnabled =
+                                await PrinterConnect.enableBluetooth();
+                            showSnackbar("BluetoothEnabled: $isEnabled");
+                          },
+                        )
+                      : PlatformButton(
+                          text: 'Disable Bluetooth',
+                          onPressed: () async {
+                            bool isDisabled =
+                                await PrinterConnect.disableBluetooth();
+                            showSnackbar("BluetoothDisabled: $isDisabled");
+                          },
+                        ),
+                if (BleCapabilities.requiresRuntimePermission) ...[
+                  PlatformButton(
+                    text: 'Is Permission Granted',
+                    onPressed: () async {
+                      try {
+                        bool granted = await PrinterConnect.hasPermissions(
+                          withAndroidFineLocation: false,
+                        );
+                        showSnackbar("Is Permission Granted: $granted");
+                      } catch (e) {
+                        showSnackbar(e.toString());
+                      }
+                    },
+                  ),
+                  PlatformButton(
+                    text: 'Request Permissions',
+                    onPressed: () async {
+                      try {
+                        await PrinterConnect.requestPermissions(
+                          withAndroidFineLocation: false,
+                        );
+                        showSnackbar("Permissions granted");
+                      } catch (e) {
+                        showSnackbar(e.toString());
+                      }
+                    },
+                  ),
+                ],
+                if (!isTrackingAvailabilityState)
+                  PlatformButton(
+                    text: 'Track Availability State',
+                    onPressed: trackAvailabilityState,
+                  ),
+                if (BleCapabilities.supportsConnectedDevicesApi)
+                  PlatformButton(
+                    text: 'System Devices',
+                    onPressed: _getSystemDevices,
+                  ),
+                PlatformButton(
+                  text: 'Queue: ${_queueType.name}',
+                  onPressed: () {
+                    setState(() {
+                      _queueType = switch (_queueType) {
+                        QueueType.global => QueueType.perDevice,
+                        QueueType.perDevice => QueueType.none,
+                        QueueType.none => QueueType.global,
+                      };
+                      PrinterConnect.queueType = _queueType;
+                    });
+                  },
+                ),
+                PlatformButton(
+                  text: 'Scan Filters',
+                  onPressed: _showScanFilterBottomSheet,
+                ),
+                PlatformButton(
+                  text: _androidOptions == null
+                      ? 'Android Scan Options'
+                      : 'Android Scan Options •',
+                  onPressed: _showAndroidScanOptionsBottomSheet,
+                ),
+                if (_hiddenDevices.isNotEmpty)
+                  PlatformButton(
+                    text: 'Unhide ${_hiddenDevices.length} Devices',
+                    onPressed: () {
+                      setState(() {
+                        _hiddenDevices.clear();
+                      });
+                    },
+                  )
+                else if (_bleDevices.isNotEmpty)
+                  Tooltip(
+                    message:
+                        'Hide already discovered devices. When you turn on a new device, it will be easier to spot.',
+                    child: PlatformButton(
+                      text: 'Hide Already Discovered Devices',
+                      onPressed: () {
+                        setState(() {
+                          _hiddenDevices.clear();
+                          _hiddenDevices.addAll(_bleDevices);
+                          _bleDevices.clear();
+                        });
+                      },
+                    ),
+                  ),
+                if (_bleDevices.isNotEmpty)
+                  PlatformButton(
+                    text: 'Clear List',
+                    onPressed: () {
+                      setState(() {
+                        _bleDevices.clear();
+                      });
+                    },
+                  ),
+              ],
+            ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              if (isTrackingAvailabilityState)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Text(
+                    'Ble Availability : ${bleAvailabilityState?.name}',
+                  ),
+                ),
+            ],
+          ),
+          const Divider(color: Colors.blue),
+          Expanded(
+            child: _isScanning && _bleDevices.isEmpty
+                ? const Center(child: CircularProgressIndicator.adaptive())
+                : !_isScanning && _bleDevices.isEmpty
+                    ? const ScannedDevicesPlaceholderWidget()
+                    : ListView.separated(
+                        itemCount: _bleDevices.length,
+                        separatorBuilder: (context, index) => const Divider(),
+                        itemBuilder: (context, index) {
+                          BleDevice device =
+                              _bleDevices[_bleDevices.length - index - 1];
+                          return ScannedItemWidget(
+                            bleDevice: device,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PeripheralDetailPage(device),
+                                ),
+                              );
+                              PrinterConnect.stopScan();
+                              setState(() {
+                                _isScanning = false;
+                              });
+                            },
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}

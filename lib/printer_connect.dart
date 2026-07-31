@@ -8,6 +8,5 @@ export 'src/printer_connect.g.dart'
     hide
         BleConnectionParametersUpdated,
         ConnectionPlatformConfig,
-        AndroidOptions,
         AppleConnectionOptions,
         CharacteristicProperty;

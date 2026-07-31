@@ -7,34 +7,34 @@ import 'package:printer_connect/printer_connect.dart';
 /// 可用服务列表、厂商数据、服务数据以及时间戳等。
 class BleDevice {
   /// 设备唯一标识符
-  final String deviceId;
+  String deviceId;
 
   /// 设备名称（已过滤不可打印字符）
-  final String? name;
+  String? name;
 
   /// 原始设备名称（未过滤）
-  final String? rawName;
+  String? rawName;
 
   /// 信号强度指示值（RSSI），单位 dBm
-  final int? rssi;
+  int? rssi;
 
   /// 是否已配对
-  final bool? paired;
+  bool? paired;
 
   /// 设备支持的服务 UUID 列表
-  final List<String> services;
+  List<String> services;
 
   /// 是否为系统设备（Android 特有）
-  final bool? isSystemDevice;
+  bool? isSystemDevice;
 
   /// 厂商特定数据列表
-  final List<ManufacturerData> manufacturerDataList;
+  List<ManufacturerData> manufacturerDataList;
 
   /// 服务数据映射（键为服务 UUID，值为数据字节）
-  final Map<String, Uint8List> serviceData;
+  Map<String, Uint8List> serviceData;
 
   /// 设备扫描时间戳（毫秒）
-  final int? timestamp;
+  int? timestamp;
 
   BleDevice({
     required this.deviceId,
