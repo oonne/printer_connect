@@ -44,7 +44,7 @@ class ResultWidget extends StatelessWidget {
               ),
             );
           },
-          separatorBuilder: (_, __) => const Divider(),
+          separatorBuilder: (_, _) => const Divider(),
         ),
       ],
     );

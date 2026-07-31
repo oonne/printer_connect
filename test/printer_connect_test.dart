@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:printer_connect/src/printer_connect.g.dart'
     show ConnectionPlatformConfig;

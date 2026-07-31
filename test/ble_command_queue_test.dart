@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:printer_connect/src/utils/ble_command_queue.dart';
 import 'package:printer_connect/printer_connect.dart';
 
 void main() {

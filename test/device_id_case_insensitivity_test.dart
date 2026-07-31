@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:printer_connect/src/utils/cache_handler.dart';
 import 'package:printer_connect/printer_connect.dart';
 import 'package:printer_connect/src/printer_connect.g.dart'
     show ConnectionPlatformConfig;

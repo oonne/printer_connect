@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:printer_connect/printer_connect.dart';
-import 'package:printer_connect/src/interfaces/printer_connect_platform_interface.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

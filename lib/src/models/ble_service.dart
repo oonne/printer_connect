@@ -119,18 +119,6 @@ class BleDescriptor {
   String toString() => 'BleDescriptor(uuid: $uuid)';
 }
 
-CharacteristicProperty _propertyFromName(String name) {
-  return CharacteristicProperty.values.byName(name);
-}
-
-CharacteristicProperty _parseCharacteristicProperty(String value) {
-  return CharacteristicProperty.values.firstWhere(
-    (e) => e.name == value,
-    orElse: () =>
-        throw ArgumentError('Unknown characteristic property: $value'),
-  );
-}
-
 /// BLE 特征属性枚举
 ///
 /// 定义了蓝牙特征值支持的各种操作属性。
