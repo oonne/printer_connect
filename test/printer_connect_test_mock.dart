@@ -1,0 +1,131 @@
+import 'dart:typed_data';
+import 'package:printer_connect/printer_connect.dart';
+import 'package:printer_connect/src/printer_connect.g.dart'
+    show ConnectionPlatformConfig;
+
+abstract class PrinterConnectPlatformMock extends PrinterConnectPlatform {
+  @override
+  Future<void> connect(
+    String deviceId, {
+    bool autoConnect = false,
+    Duration? connectionTimeout,
+    ConnectionPlatformConfig? platformConfig,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> disableBluetooth() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> disconnect(String deviceId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<BleService>> discoverServices(
+    String deviceId,
+    bool withDescriptors,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> enableBluetooth() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AvailabilityState> getBluetoothAvailabilityState() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<BleConnectionState> getConnectionState(String deviceId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<BleDevice>> getSystemDevices(List<String>? withServices) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> isPaired(String deviceId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> pair(String deviceId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Uint8List> readValue(
+    String deviceId,
+    String service,
+    String characteristic, {
+    Duration? timeout,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<int> requestMtu(String deviceId, int expectedMtu) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> requestConnectionPriority(
+    String deviceId,
+    BleConnectionPriority priority,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> setNotifiable(
+    String deviceId,
+    String service,
+    String characteristic,
+    BleInputProperty bleInputProperty,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> startScan({
+    ScanFilter? scanFilter,
+    PlatformConfig? platformConfig,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> stopScan() {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> unpair(String deviceId) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> writeValue(
+    String deviceId,
+    String service,
+    String characteristic,
+    Uint8List value,
+    BleOutputProperty bleOutputProperty,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> isScanning() {
+    throw UnimplementedError();
+  }
+}

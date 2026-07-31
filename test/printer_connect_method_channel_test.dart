@@ -1,77 +1,11 @@
-import 'dart:typed_data';
-
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:printer_connect/src/printer_connect.g.dart'
     show ConnectionPlatformConfig;
 import 'package:printer_connect/printer_connect.dart';
 
-void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
+import 'printer_connect_test_mock.dart';
 
-  group('PigeonPrinterConnectPlatform', () {
-    test('is the default instance', () {
-      expect(
-        PrinterConnectPlatform.instance,
-        isInstanceOf<PigeonPrinterConnectPlatform>(),
-      );
-    });
-
-    test('can be replaced with a mock', () {
-      final mockPlatform = MockPrinterConnectPlatform();
-      PrinterConnectPlatform.instance = mockPlatform;
-
-      expect(PrinterConnectPlatform.instance, isInstanceOf<MockPrinterConnectPlatform>());
-    });
-  });
-
-  group('PrinterConnect static methods', () {
-    late MockPrinterConnectPlatform mockPlatform;
-
-    setUp(() {
-      mockPlatform = MockPrinterConnectPlatform();
-      PrinterConnectPlatform.instance = mockPlatform;
-    });
-
-    test('getBluetoothAvailabilityState', () async {
-      final result = await PrinterConnect.getBluetoothAvailabilityState();
-      expect(result, AvailabilityState.poweredOn);
-    });
-
-    test('enableBluetooth', () async {
-      final result = await PrinterConnect.enableBluetooth();
-      expect(result, true);
-    });
-
-    test('disableBluetooth', () async {
-      final result = await PrinterConnect.disableBluetooth();
-      expect(result, true);
-    });
-
-    test('hasPermissions', () async {
-      final result = await PrinterConnect.hasPermissions();
-      expect(result, true);
-    });
-
-    test('isScanning', () async {
-      final result = await PrinterConnect.isScanning();
-      expect(result, false);
-    });
-
-    test('getConnectionState', () async {
-      final result = await PrinterConnect.getConnectionState('test-device');
-      expect(result, BleConnectionState.disconnected);
-    });
-
-    test('setLogLevel', () async {
-      expect(() async {
-        await PrinterConnect.setLogLevel(BleLogLevel.info);
-      }, returnsNormally);
-    });
-  });
-}
-
-class MockPrinterConnectPlatform extends PrinterConnectPlatform {
+class _FullMock extends PrinterConnectPlatformMock {
   @override
   Future<AvailabilityState> getBluetoothAvailabilityState() async {
     return AvailabilityState.poweredOn;
@@ -158,4 +92,150 @@ class MockPrinterConnectPlatform extends PrinterConnectPlatform {
 
   @override
   bool receivesAdvertisements(String deviceId) => false;
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('PigeonPrinterConnectPlatform', () {
+    test('is the default instance', () {
+      expect(
+        PrinterConnectPlatform.instance,
+        isInstanceOf<PigeonPrinterConnectPlatform>(),
+      );
+    });
+
+    test('can be replaced with a mock', () {
+      final mockPlatform = _FullMock();
+      PrinterConnectPlatform.instance = mockPlatform;
+
+      expect(PrinterConnectPlatform.instance, isInstanceOf<_FullMock>());
+    });
+  });
+
+  group('PrinterConnect static methods', () {
+    late _FullMock mockPlatform;
+
+    setUp(() {
+      mockPlatform = _FullMock();
+      PrinterConnectPlatform.instance = mockPlatform;
+    });
+
+    test('getBluetoothAvailabilityState', () async {
+      final result = await PrinterConnect.getBluetoothAvailabilityState();
+      expect(result, AvailabilityState.poweredOn);
+    });
+
+    test('enableBluetooth', () async {
+      final result = await PrinterConnect.enableBluetooth();
+      expect(result, true);
+    });
+
+    test('disableBluetooth', () async {
+      final result = await PrinterConnect.disableBluetooth();
+      expect(result, true);
+    });
+
+    test('hasPermissions', () async {
+      final result = await PrinterConnect.hasPermissions();
+      expect(result, true);
+    });
+
+    test('isScanning', () async {
+      final result = await PrinterConnect.isScanning();
+      expect(result, false);
+    });
+
+    test('getConnectionState', () async {
+      final result = await PrinterConnect.getConnectionState('test-device');
+      expect(result, BleConnectionState.disconnected);
+    });
+
+    test('setLogLevel', () async {
+      expect(() async {
+        await PrinterConnect.setLogLevel(BleLogLevel.info);
+      }, returnsNormally);
+    });
+
+    test('startScan / stopScan returns normally', () async {
+      expect(() async {
+        await PrinterConnect.startScan();
+        await PrinterConnect.stopScan();
+      }, returnsNormally);
+    });
+
+    test('discoverServices returns empty list', () async {
+      final result =
+          await PrinterConnect.discoverServices('test-device');
+      expect(result, isEmpty);
+    });
+
+    test('requestMtu returns expected value', () async {
+      final result = await PrinterConnect.requestMtu('test-device', 512);
+      expect(result, 512);
+    });
+
+    test('readRssi returns 0', () async {
+      final result = await PrinterConnect.readRssi('test-device');
+      expect(result, 0);
+    });
+
+    test('read returns empty list', () async {
+      final result = await PrinterConnect.read(
+          'test-device', '180a', '2a00');
+      expect(result, Uint8List(0));
+    });
+
+    test('write returns normally', () async {
+      expect(() async {
+        await PrinterConnect.write(
+            'test-device', '180a', '2a00', Uint8List.fromList([1, 2]));
+      }, returnsNormally);
+    });
+
+    test('subscribeNotifications / unsubscribe returns normally', () async {
+      expect(() async {
+        await PrinterConnect.subscribeNotifications(
+            'test-device', '180a', '2a00');
+        await PrinterConnect.unsubscribe(
+            'test-device', '180a', '2a00');
+      }, returnsNormally);
+    });
+
+    test('subscribeIndications returns normally', () async {
+      expect(() async {
+        await PrinterConnect.subscribeIndications(
+            'test-device', '180a', '2a00');
+      }, returnsNormally);
+    });
+
+    test('requestConnectionPriority returns normally', () async {
+      expect(() async {
+        await PrinterConnect.requestConnectionPriority(
+            'test-device', BleConnectionPriority.highPerformance);
+      }, returnsNormally);
+    });
+
+    test('isPaired returns false', () async {
+      final result = await PrinterConnect.isPaired('test-device');
+      expect(result, false);
+    });
+
+    test('getSystemDevices returns empty', () async {
+      final result = await PrinterConnect.getSystemDevices();
+      expect(result, isEmpty);
+    });
+
+    test('requestPermissions returns normally', () async {
+      expect(() async {
+        await PrinterConnect.requestPermissions();
+      }, returnsNormally);
+    });
+
+    test('clearQueue returns normally', () {
+      expect(() {
+        PrinterConnect.clearQueue();
+      }, returnsNormally);
+    });
+  });
 }

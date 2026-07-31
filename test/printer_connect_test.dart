@@ -1,11 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:printer_connect/src/printer_connect.g.dart'
     show ConnectionPlatformConfig;
 import 'package:printer_connect/printer_connect.dart';
 
-class MockPrinterConnectPlatform extends PrinterConnectPlatform {
+import 'printer_connect_test_mock.dart';
+
+class _TestableMock extends PrinterConnectPlatformMock {
   @override
   Future<AvailabilityState> getBluetoothAvailabilityState() async {
     return AvailabilityState.poweredOn;
@@ -103,7 +103,7 @@ void main() {
   });
 
   test('getBluetoothAvailabilityState', () async {
-    MockPrinterConnectPlatform fakePlatform = MockPrinterConnectPlatform();
+    _TestableMock fakePlatform = _TestableMock();
     PrinterConnectPlatform.instance = fakePlatform;
 
     expect(await PrinterConnect.getBluetoothAvailabilityState(),
@@ -111,14 +111,14 @@ void main() {
   });
 
   test('hasPermissions', () async {
-    MockPrinterConnectPlatform fakePlatform = MockPrinterConnectPlatform();
+    _TestableMock fakePlatform = _TestableMock();
     PrinterConnectPlatform.instance = fakePlatform;
 
     expect(await PrinterConnect.hasPermissions(), true);
   });
 
   test('isScanning', () async {
-    MockPrinterConnectPlatform fakePlatform = MockPrinterConnectPlatform();
+    _TestableMock fakePlatform = _TestableMock();
     PrinterConnectPlatform.instance = fakePlatform;
 
     expect(await PrinterConnect.isScanning(), false);
