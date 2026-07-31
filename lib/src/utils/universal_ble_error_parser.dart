@@ -2,8 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
+/// 通用蓝牙错误码枚举
+///
+/// 错误码分为两段：
+/// - 0~33：原始错误码
+/// - 34~58：扩展错误码，匹配 iOS/Android 原生枚举值
 enum UniversalBleErrorCode {
-  // 0-33: original codes
+  // 0-33: 原始错误码
   unknownError,
   bluetoothNotAvailable,
   bluetoothNotAuthorized,
@@ -38,7 +43,7 @@ enum UniversalBleErrorCode {
   streamNotListening,
   transactionInProgress,
   invalidTransactionId,
-  // 34-58: extended codes matching iOS/Android native enums
+  // 34-58: 扩展错误码，匹配 iOS/Android 原生枚举
   bluetoothNotEnabled,
   bluetoothNotAllowed,
   notPaired,
@@ -66,9 +71,14 @@ enum UniversalBleErrorCode {
   characteristicDoesNotSupportIndicate,
 }
 
+/// 通用蓝牙错误解析器
+///
+/// 将各种来源的错误（原生平台异常、数字错误码、字符串错误信息等）
+/// 统一解析为 [UniversalBleErrorCode] 枚举值。
 class UniversalBleErrorParser {
   UniversalBleErrorParser._();
 
+  /// 从各种类型的 [error] 中解析出 [UniversalBleErrorCode]
   static UniversalBleErrorCode getCode(dynamic error) {
     if (error is UniversalBleErrorCode) return error;
 
@@ -108,6 +118,9 @@ class UniversalBleErrorParser {
     return UniversalBleErrorCode.unknownError;
   }
 
+  /// 通过字符串匹配解析错误码
+  ///
+  /// 将字符串转为小写后，通过关键字匹配映射到对应的错误码。
   static UniversalBleErrorCode? _parseStringErrorCode(String code) {
     final lowerCode = code.toLowerCase();
 
@@ -249,19 +262,23 @@ class UniversalBleErrorParser {
     return null;
   }
 
-  /// Parses a numeric error code coming from the native platform.
-  /// Both iOS and Android send numeric codes as strings (e.g. "6" for
-  /// connection_failed, "11" for write_failed). The Dart-side
-  /// [UniversalBleErrorCode] enum indices (0..58) mirror the native
-  /// [UniversalBleErrorCode] raw values, so a direct index lookup works.
-  /// GATT/HCI error codes are also mapped to the appropriate error codes.
+  /// 解析来自原生平台的数字错误码
+  ///
+  /// iOS 和 Android 均以字符串形式传递数字错误码（如 "6" 表示 connection_failed，
+  /// "11" 表示 write_failed）。Dart 侧的 [UniversalBleErrorCode] 枚举索引（0..58）
+  /// 与原生枚举值一一对应，因此可以直接通过索引查找。
+  ///
+  /// GATT/HCI 错误码映射：
+  /// - GATT 错误码范围 0x00-0x1F，对应 BLE GATT 协议层的错误
+  /// - HCI 错误码范围更大，对应蓝牙控制器层的错误
+  /// 两类错误码都会被映射到 [UniversalBleErrorCode] 中对应的语义错误码。
   static UniversalBleErrorCode? _parseNumericErrorCode(int code) {
-    // First try direct index lookup for codes 0..58
+    // 首先尝试直接索引查找（适用于 0..58 的原生错误码）
     if (code >= 0 && code < UniversalBleErrorCode.values.length) {
       return UniversalBleErrorCode.values[code];
     }
 
-    // GATT error codes (0x00-0x1F)
+    // GATT 错误码映射（0x00-0x1F）
     switch (code) {
       case 0x00:
         return UniversalBleErrorCode.unknownError;
@@ -301,9 +318,9 @@ class UniversalBleErrorParser {
         return UniversalBleErrorCode.failed;
     }
 
-    // HCI error codes
+    // HCI 错误码映射
     switch (code) {
-      // Connection errors
+      // 连接相关错误
       case 0x08:
       case 0x10:
         return UniversalBleErrorCode.connectionTimeout;
@@ -334,7 +351,7 @@ class UniversalBleErrorParser {
       case 0x3E:
       case 0x3F:
         return UniversalBleErrorCode.connectionFailed;
-      // Pairing/Authentication errors
+      // 配对/认证相关错误
       case 0x05:
         return UniversalBleErrorCode.insufficientAuthentication;
       case 0x18:

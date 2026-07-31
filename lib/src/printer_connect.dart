@@ -11,64 +11,64 @@ import 'package:printer_connect/src/printer_connect_exceptions.dart'
     as exceptions;
 
 class PrinterConnect {
-  /// Get platform specific implementation.
+  /// 获取平台特定的实现实例
   static PrinterConnectPlatform _platform = PrinterConnectPlatform.instance;
 
   static final BleCommandQueue _bleCommandQueue = BleCommandQueue();
 
-  /// Set custom platform specific implementation (e.g. for testing).
+  /// 设置自定义平台实现（例如用于测试）
   static void setInstance(PrinterConnectPlatform instance) =>
       _platform = instance;
 
-  /// Set global timeout for all commands.
-  /// Default timeout is 10 seconds.
-  /// Set to null to disable.
+  /// 设置所有命令的全局超时时间
+  /// 默认超时为 10 秒
+  /// 设为 null 则禁用超时
   static set timeout(Duration? duration) {
     _bleCommandQueue.timeout = duration;
   }
 
-  /// Set log level for both Dart and native implementations.
-  /// Only effective in debug builds.
+  /// 设置 Dart 端和原生端的日志级别
+  /// 仅在 debug 构建中生效
   static Future<void> setLogLevel(BleLogLevel logLevel) async {
     if (!kDebugMode) return;
     UniversalLogger.setLogLevel(logLevel);
     await _platform.setLogLevel(logLevel);
   }
 
-  /// Set how commands will be executed. By default, all commands are executed in a global queue (`QueueType.global`),
-  /// with each command waiting for the previous one to finish.
+  /// 设置命令的执行方式。默认情况下，所有命令在全局队列中执行（[QueueType.global]），
+  /// 每个命令等待前一个命令完成后再执行
   ///
-  /// [QueueType.global] will execute commands of all devices in a single queue.
-  /// [QueueType.perDevice] will execute command of each device in separate queues.
-  /// [QueueType.none] will execute all commands in parallel.
+  /// [QueueType.global] 所有设备的命令在单个队列中按顺序执行
+  /// [QueueType.perDevice] 每个设备的命令在独立队列中按顺序执行
+  /// [QueueType.none] 所有命令并行执行，不进行排队
   static set queueType(QueueType queueType) {
     _bleCommandQueue.queueType = queueType;
     UniversalLogger.logInfo('Queue ${queueType.name}');
   }
 
-  /// Scan Stream
+  /// 扫描结果流
   static Stream<BleDevice> get scanStream => _platform.scanStream;
 
-  /// Bluetooth availability state stream
+  /// 蓝牙可用性状态流
   static Stream<AvailabilityState> get availabilityStream =>
       _platform.availabilityStream;
 
-  /// Connection stream of a device
+  /// 设备连接状态流
   static Stream<bool> connectionStream(String deviceId) =>
       _platform.connectionStream(deviceId);
 
-  /// Characteristic value stream
+  /// 特征值数据流
   static Stream<Uint8List> characteristicValueStream(
     String deviceId,
     String characteristicId,
   ) => _platform.characteristicValueStream(deviceId, characteristicId);
 
-  /// Pairing state stream
+  /// 配对状态流
   static Stream<bool> pairingStateStream(String deviceId) =>
       _platform.pairingStateStream(deviceId);
 
-  /// Get Bluetooth availability state.
-  /// To be notified of updates, set [onAvailabilityChange] listener.
+  /// 获取蓝牙可用性状态
+  /// 如需接收状态更新，请设置 [onAvailabilityChange] 监听器
   static Future<AvailabilityState> getBluetoothAvailabilityState({
     String? queueId,
   }) async {
@@ -78,9 +78,9 @@ class PrinterConnect {
     );
   }
 
-  /// Check if has permissions.
-  /// [withAndroidFineLocation] is used to check fine location permission on Android 12+ (API 31+).
-  /// On Android lower than 12, this method will check location permission regardless of the [withAndroidFineLocation] value.
+  /// 检查是否已获取权限
+  /// [withAndroidFineLocation] 用于在 Android 12+（API 31+）上检查精确位置权限
+  /// 在 Android 12 以下版本中，此方法将检查位置权限，不受 [withAndroidFineLocation] 影响
   static Future<bool> hasPermissions({
     bool withAndroidFineLocation = false,
   }) async {
@@ -89,11 +89,11 @@ class PrinterConnect {
     );
   }
 
-  /// Request permissions.
-  /// if all permissions are already granted or granted by user, this method will succeed.
-  /// it will throw exception if permissions are denied by user.
-  /// [withAndroidFineLocation] is used to request fine location permission on Android 12+ (API 31+).
-  /// on Android lower than 12, this method will request location permission regardless of the [withAndroidFineLocation] value.
+  /// 请求权限
+  /// 如果所有权限已被授予或用户授予，此方法将成功
+  /// 如果权限被用户拒绝，将抛出异常
+  /// [withAndroidFineLocation] 用于在 Android 12+（API 31+）上请求精确位置权限
+  /// 在 Android 12 以下版本中，此方法将请求位置权限，不受 [withAndroidFineLocation] 影响
   static Future<void> requestPermissions({
     bool withAndroidFineLocation = false,
   }) async {
@@ -102,9 +102,9 @@ class PrinterConnect {
     );
   }
 
-  /// Start scan.
-  /// Scan results will arrive in [onScanResult] listener.
-  /// It might throw errors if Bluetooth is not available.
+  /// 开始扫描蓝牙设备
+  /// 扫描结果将通过 [onScanResult] 监听器返回
+  /// 如果蓝牙不可用，可能会抛出错误
   static Future<void> startScan({
     ScanFilter? scanFilter,
     PlatformConfig? platformConfig,
@@ -119,9 +119,9 @@ class PrinterConnect {
     );
   }
 
-  /// Stop scan.
-  /// Set [onScanResult] listener to `null` if you don't need it anymore.
-  /// It might throw errors if Bluetooth is not available.
+  /// 停止扫描
+  /// 如果不再需要扫描结果，请将 [onScanResult] 监听器设为 `null`
+  /// 如果蓝牙不可用，可能会抛出错误
   static Future<void> stopScan({String? queueId}) async {
     return await _bleCommandQueue.queueCommandWithoutTimeout(
       () => _platform.stopScan(),
@@ -129,8 +129,8 @@ class PrinterConnect {
     );
   }
 
-  /// Check if currently scanning for devices.
-  /// Returns `true` if scanning is active, `false` otherwise.
+  /// 检查是否正在扫描设备
+  /// 正在扫描返回 `true`，否则返回 `false`
   static Future<bool> isScanning({String? queueId}) async {
     return await _bleCommandQueue.queueCommand(
       () => _platform.isScanning(),
@@ -138,21 +138,21 @@ class PrinterConnect {
     );
   }
 
-  /// Connect to a device.
-  /// It is advised to stop scanning before connecting.
-  /// It throws error if device connection fails.
-  /// Default connection timeout is 60 sec.
+  /// 连接到指定设备
+  /// 建议在连接前停止扫描
+  /// 如果设备连接失败，将抛出错误
+  /// 默认连接超时为 60 秒
   ///
-  /// [autoConnect] enables automatic reconnection when the device becomes available.
-  /// Default value is `false`.
+  /// [autoConnect] 启用自动重连，当设备变为可用时自动重连
+  /// 默认值为 `false`
   ///
-  /// Call [disconnect] to prevent auto-reconnect even while a device is disconnected.
+  /// 调用 [disconnect] 可阻止自动重连，即使设备已断开连接
   ///
-  /// [platformConfig] sets platform specific connection options,
-  /// e.g. [AppleConnectionOptions] to get notified of connection events
-  /// while the app is suspended. Ignored on other platforms.
+  /// [platformConfig] 设置平台特定的连接选项，
+  /// 例如 [AppleConnectionOptions] 用于在应用挂起时接收连接事件通知
+  /// 其他平台忽略此参数
   ///
-  /// Can throw `ConnectionException` or `PlatformException`.
+  /// 可能抛出 `ConnectionException` 或 `PlatformException`
   static Future<void> connect(
     String deviceId, {
     Duration? timeout,
@@ -160,6 +160,9 @@ class PrinterConnect {
     ConnectionPlatformConfig? platformConfig,
   }) async {
     timeout ??= const Duration(seconds: 60);
+    // 创建事件等待机制：通过 _connectionEventCompleter 监听连接状态流，
+    // 当平台层上报连接成功/失败事件时，completer.future 完成，
+    // 从而实现异步等待连接结果的管理逻辑
     Completer<bool> completer = _connectionEventCompleter(
       deviceId,
       timeout: timeout,
@@ -185,8 +188,8 @@ class PrinterConnect {
     }
   }
 
-  /// Disconnect from a device.
-  /// Get notified of connection state changes in [onConnectionChange] listener.
+  /// 断开与指定设备的连接
+  /// 连接状态变更可通过 [onConnectionChange] 监听器接收通知
   static Future<void> disconnect(
     String deviceId, {
     Duration? timeout,
@@ -200,6 +203,8 @@ class PrinterConnect {
       UniversalLogger.logError("Get connection state failed: $e");
     }
     try {
+      // 创建事件等待机制：监听连接状态流以确认断开结果，
+      // 同时处理已断开连接的场景（清理自动重连状态）
       Completer<bool> completer = _connectionEventCompleter(
         deviceId,
         timeout: timeout,
@@ -217,8 +222,8 @@ class PrinterConnect {
           });
       if (connectionState == BleConnectionState.disconnected ||
           connectionState == BleConnectionState.disconnecting) {
-        // Device was already disconnected, but we still called platform disconnect
-        // to prevent auto-reconnect. Update connection state and return.
+        // 设备已处于断开状态，但仍调用了平台层的 disconnect 以防止自动重连
+        // 更新连接状态并返回
         _platform.updateConnection(deviceId, false);
         UniversalLogger.logInfo(
           "Device $deviceId already disconnected: $connectionState. Cleanup performed to prevent auto-reconnect.",
@@ -235,8 +240,8 @@ class PrinterConnect {
     }
   }
 
-  /// Discover services of a device.
-  /// Set [withDescriptors] to `true` to discover characteristics with descriptors.
+  /// 发现设备的 GATT 服务
+  /// 将 [withDescriptors] 设为 `true` 可同时发现带描述符的特征
   static Future<List<BleService>> discoverServices(
     String deviceId, {
     bool withDescriptors = false,
@@ -251,9 +256,9 @@ class PrinterConnect {
     );
   }
 
-  /// Set a characteristic notifiable.
-  /// Updates will arrive in [onValueChange] listener and [characteristicValueStream]
-  /// call [unsubscribe] to stop updates
+  /// 设置特征值为通知模式（Notification）
+  /// 更新将通过 [onValueChange] 监听器和 [characteristicValueStream] 返回
+  /// 调用 [unsubscribe] 停止接收更新
   static Future<void> subscribeNotifications(
     String deviceId,
     String service,
@@ -271,9 +276,9 @@ class PrinterConnect {
     );
   }
 
-  /// Set a characteristic notifiable.
-  /// Updates will arrive in [onValueChange] listener and [characteristicValueStream]
-  /// call [unsubscribe] to stop updates
+  /// 设置特征值为指示模式（Indication）
+  /// 更新将通过 [onValueChange] 监听器和 [characteristicValueStream] 返回
+  /// 调用 [unsubscribe] 停止接收更新
   static Future<void> subscribeIndications(
     String deviceId,
     String service,
@@ -291,7 +296,7 @@ class PrinterConnect {
     );
   }
 
-  /// Stop characteristic notifications/indication updates
+  /// 停止特征值的通知/指示更新
   static Future<void> unsubscribe(
     String deviceId,
     String service,
@@ -309,8 +314,8 @@ class PrinterConnect {
     );
   }
 
-  /// Read a characteristic value.
-  /// On iOS this command will also trigger [onValueChange] listener.
+  /// 读取特征值
+  /// 在 iOS 上，此命令还会触发 [onValueChange] 监听器
   static Future<Uint8List> read(
     String deviceId,
     String service,
@@ -331,8 +336,8 @@ class PrinterConnect {
     );
   }
 
-  /// Write a characteristic value.
-  /// To write a characteristic value without response, set [withoutResponse] to `true`.
+  /// 写入特征值
+  /// 如需写入时不要求响应，将 [withoutResponse] 设为 `true`
   static Future<void> write(
     String deviceId,
     String service,
@@ -358,11 +363,11 @@ class PrinterConnect {
     );
   }
 
-  /// Requests an MTU (Maximum Transmission Unit) value for the connection.
+  /// 请求连接的 MTU（最大传输单元）值
   ///
-  /// **⚠️ Note:** Requesting an MTU is a *best-effort* operation. On many platforms
-  /// the final MTU is fully controlled by the OS and remote device. This method
-  /// returns the current/negotiated MTU value, which may differ from `expectedMtu`.
+  /// **⚠️ 注意：** 请求 MTU 是一个*尽力而为*的操作。在许多平台上，
+  /// 最终 MTU 完全由操作系统和远程设备控制。此方法返回当前/协商后的 MTU 值，
+  /// 可能与 `expectedMtu` 不同
   static Future<int> requestMtu(
     String deviceId,
     int expectedMtu, {
@@ -377,12 +382,12 @@ class PrinterConnect {
     );
   }
 
-  /// Requests a connection parameter update for [deviceId].
+  /// 请求更新 [deviceId] 的连接参数
   ///
-  /// [priority] controls the BLE connection interval:
-  /// - [BleConnectionPriority.balanced] - default OS behaviour (~30-50 ms interval).
-  /// - [BleConnectionPriority.highPerformance] - low latency, higher power (~7.5-15 ms interval).
-  /// - [BleConnectionPriority.lowPower] - power-optimised (~100-125 ms interval).
+  /// [priority] 控制 BLE 连接间隔：
+  /// - [BleConnectionPriority.balanced] - 操作系统默认行为（约 30-50 ms 间隔）
+  /// - [BleConnectionPriority.highPerformance] - 低延迟，功耗较高（约 7.5-15 ms 间隔）
+  /// - [BleConnectionPriority.lowPower] - 功耗优化（约 100-125 ms 间隔）
   static Future<void> requestConnectionPriority(
     String deviceId,
     BleConnectionPriority priority, {
@@ -397,11 +402,10 @@ class PrinterConnect {
     );
   }
 
-  /// Read the RSSI value of a connected device.
+  /// 读取已连接设备的 RSSI（接收信号强度指示）值
   ///
-  /// Returns the current RSSI value in dBm. This value indicates the signal strength
-  /// between the device and the connected peripheral. Lower (more negative) values
-  /// indicate weaker signal, while higher (less negative) values indicate stronger signal.
+  /// 返回当前 RSSI 值（单位：dBm）。该值表示设备与连接外设之间的信号强度。
+  /// 较低（更负）的值表示信号较弱，较高（更正）的值表示信号较强
   static Future<int> readRssi(
     String deviceId, {
     Duration? timeout,
@@ -415,7 +419,7 @@ class PrinterConnect {
     );
   }
 
-  /// Check if a device is paired.
+  /// 检查设备是否已配对
   static Future<bool> isPaired(
     String deviceId, {
     Duration? timeout,
@@ -432,7 +436,7 @@ class PrinterConnect {
     return false;
   }
 
-  /// Pair a device.
+  /// 配对设备
   static Future<bool> pair(
     String deviceId, {
     Duration? timeout,
@@ -453,14 +457,14 @@ class PrinterConnect {
       }
       return paired;
     }
-    // iOS doesn't support system pairing API.
+    // iOS 不支持系统配对 API
     throw exceptions.PairingException(
       'Pairing is not supported on this platform',
       code: 'not_supported',
     );
   }
 
-  /// Unpair a device.
+  /// 取消配对设备
   static Future<void> unpair(
     String deviceId, {
     Duration? timeout,
@@ -474,7 +478,7 @@ class PrinterConnect {
     );
   }
 
-  /// Get connection state of a device.
+  /// 获取设备的连接状态
   static Future<BleConnectionState> getConnectionState(
     String deviceId, {
     Duration? timeout,
@@ -487,7 +491,7 @@ class PrinterConnect {
     );
   }
 
-  /// Get system connected devices.
+  /// 获取系统已连接的设备列表
   static Future<List<BleDevice>> getSystemDevices({
     List<String>? withServices,
     Duration? timeout,
@@ -500,7 +504,7 @@ class PrinterConnect {
     );
   }
 
-  /// Enable Bluetooth (Android only).
+  /// 启用蓝牙（仅 Android 平台）
   static Future<bool> enableBluetooth({
     Duration? timeout,
     String? queueId,
@@ -512,7 +516,7 @@ class PrinterConnect {
     );
   }
 
-  /// Disable Bluetooth (Android only).
+  /// 禁用蓝牙（仅 Android 平台）
   static Future<bool> disableBluetooth({
     Duration? timeout,
     String? queueId,
@@ -524,25 +528,28 @@ class PrinterConnect {
     );
   }
 
-  /// Clear a queue.
-  /// Use [BleCommandQueue.globalQueueId] to clear the global queue.
-  /// To clear the queue of a specific device, use `deviceId` as [id].
-  /// To clear a custom queue, pass the same `queueId` string used when enqueueing commands.
-  /// If no [id] is provided, all queues will be cleared.
+  /// 清空指定队列
+  /// 使用 [BleCommandQueue.globalQueueId] 清空全局队列
+  /// 要清空特定设备的队列，请使用 `deviceId` 作为 [id]
+  /// 要清空自定义队列，请传入入队时使用的 `queueId` 字符串
+  /// 如果未提供 [id]，则清空所有队列
   static void clearQueue([String? id]) => _bleCommandQueue.clearQueue(id);
 
-  /// Get updates of remaining items of a queue.
+  /// 获取队列中剩余任务的更新
   static set onQueueUpdate(OnQueueUpdate? onQueueUpdate) =>
       _bleCommandQueue.onQueueUpdate = onQueueUpdate;
 
-  /// Check if device receives advertisements.
+  /// 检查设备是否仍在接收广播
   static bool receivesAdvertisements(String deviceId) {
     return _platform.receivesAdvertisements(deviceId);
   }
 
-  // Private helper methods
+  // 私有辅助方法
 
-  /// Creates a completer that will be completed when the connection state changes.
+  /// 创建一个 Completer，当连接状态发生变化时完成
+  /// 这是一个事件等待机制：订阅平台层的连接更新流，
+  /// 当指定设备的连接事件到达时完成 completer，
+  /// 从而支持异步等待连接操作的结果
   static Completer<bool> _connectionEventCompleter(
     String deviceId, {
     Duration? timeout,
@@ -566,6 +573,7 @@ class PrinterConnect {
     connectionSubscription = _platform
         .bleConnectionUpdateStreamController
         .stream
+        // 大小写不敏感的设备ID匹配：支持 MAC 地址（Android/Windows/Linux）和 UUID（Apple）的不同大小写格式
         .where((e) => e.deviceId == deviceId || e.deviceId.toLowerCase() == target)
         .listen(
           (e) {
@@ -594,7 +602,7 @@ class PrinterConnect {
     return completer;
   }
 
-  /// Sends a BLE input property command (notification/indication/unsubscribe).
+  /// 发送 BLE 输入属性命令（通知/指示/取消订阅）
   static Future<void> _sendBleInputPropertyCommand(
     String deviceId,
     String service,

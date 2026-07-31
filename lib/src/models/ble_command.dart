@@ -1,8 +1,17 @@
 import 'dart:typed_data';
 
+/// BLE 命令封装类
+///
+/// 描述一个蓝牙操作命令，包括目标服务、特征和待写入数据。
+/// 用于在队列化操作中表示一个完整的蓝牙指令。
 class BleCommand {
+  /// 目标服务 UUID
   final String service;
+
+  /// 目标特征 UUID
   final String characteristic;
+
+  /// 待写入的数据（可选，读操作时为 null）
   final Uint8List? writeValue;
 
   const BleCommand({

@@ -8,6 +8,9 @@ import AppKit
 import FlutterMacOS
 #endif
 
+/// Flutter BLE 打印机连接插件主入口。
+/// 负责注册 Flutter 插件通道（PlatformChannel / CallbackChannel），
+/// 并初始化底层蓝牙中央管理器（CBCentralManager）。
 public class PrinterConnectPlugin: NSObject, FlutterPlugin {
 
     public static func register(with registrar: FlutterPluginRegistrar) {
@@ -16,25 +19,36 @@ public class PrinterConnectPlugin: NSObject, FlutterPlugin {
         let api = BleCentralDarwin(callbackChannel: callbackChannel)
         UniversalBlePlatformChannelSetup.setUp(binaryMessenger: binaryMessenger, api: api)
         #if os(iOS)
-        // When the host app declares `bluetooth-central`, build the manager during
-        // launch so CoreBluetooth can deliver `willRestoreState:` after a background
-        // relaunch (see activateStateRestoration).
+        // 当宿主 App 声明了 `bluetooth-central` 后台模式时，在启动时构建管理器，
+        // 这样 CoreBluetooth 才能在后台重启后通过 willRestoreState: 恢复状态
+        // （见 activateStateRestoration 方法）。
         api.activateStateRestoration()
         #endif
     }
 }
 
+// 已发现的外设缓存表（key: 设备 UUID 字符串, value: CBPeripheral 实例）
 private var discoveredPeripherals = [String: CBPeripheral]()
 
-// Cache last advertised local name for peripherals
-// since iOS and MacOS don't do that for system devices
+// 缓存外设最后一次广播的本地名称
+// 因为 iOS 和 macOS 不会为系统设备自动缓存该名称
 private var advertisementNameCache = [String: String]()
 
+/// 蓝牙中央管理器核心实现类。
+///
+/// 负责管理 CBCentralManager 的完整生命周期，包括：
+/// - 蓝牙设备扫描与发现
+/// - 连接管理（自动重连、断开处理）
+/// - GATT 服务发现、特征值读写、通知订阅
+/// - 状态恢复机制（iOS 后台模式）
+/// - 通过 Flutter 通道将事件回调传递给 Dart 层
 private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentralManagerDelegate, CBPeripheralDelegate {
 
+    /// 状态恢复标识符，用于 CoreBluetooth 后台恢复机制
     static let stateRestorationIdentifier = "com.printerconnect.central.restoration"
 
     #if os(iOS)
+    /// 检测宿主 App 是否配置了 bluetooth-central 后台模式
     private static let hasBluetoothCentralBackgroundMode: Bool = {
         guard let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] else {
             return false
@@ -63,6 +77,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
 
     #if os(iOS)
     private lazy var manager: CBCentralManager = {
+        // 如果开启了后台模式，使用带恢复标识符的配置创建管理器，
+        // 以便 App 从后台恢复时能重建已连接的外设状态
         if Self.hasBluetoothCentralBackgroundMode {
             return CBCentralManager(
                 delegate: self,
@@ -76,19 +92,32 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     private lazy var manager: CBCentralManager = .init(delegate: self, queue: nil)
     #endif
 
+    /// 蓝牙可用性状态变更等待队列
     private var availabilityStateUpdateHandlers: [(Result<AvailabilityState, Error>) -> Void] = []
+    /// 蓝牙权限请求等待队列
     private var requestPermissionStateUpdateHandlers: [(Result<Void, Error>) -> Void] = []
 
+    /// 当前正在进行的异步服务发现任务表（key: 设备 UUID）
     private var activeServiceDiscoveries: [String: PrinterConnectAsyncServiceDiscovery] = [:]
 
+    // MARK: - Future 回调存储（用于异步操作结果匹配）
+
+    /// 特征值读取操作的 Future 数组
     private var characteristicReadFutures = [CharacteristicReadFuture]()
+    /// 特征值写入操作（带响应）的 Future 数组
     private var characteristicWriteFutures = [CharacteristicWriteFuture]()
+    /// 特征值写入操作（无响应）的 Future 数组
     private var characteristicWriteWithoutResponseFutures = [CharacteristicWriteFuture]()
+    /// 特征值通知/指示订阅操作的 Future 数组
     private var characteristicNotifyFutures = [CharacteristicNotifyFuture]()
+    /// 服务发现操作的 Future 数组
     private var discoverServicesFutures = [DiscoverServicesFuture]()
+    /// RSSI 读取操作的 Future 数组
     private var rssiReadFutures = [RssiReadFuture]()
 
+    /// 标记是否由插件主动管理扫描状态
     private var isManageScanning = false
+    /// 需要自动重连的设备集合（iOS 17+ 使用系统自动重连，旧版本手动处理）
     private var autoConnectDevices = Set<String>()
 
     private let logger = PrinterConnectLogger.shared
@@ -99,6 +128,9 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     }
 
     #if os(iOS)
+    /// 激活状态恢复机制。
+    /// 当宿主 App 声明了 bluetooth-central 后台模式且已获得蓝牙权限时，
+    /// 强制初始化 CBCentralManager 以触发状态恢复流程。
     func activateStateRestoration() {
         guard Self.hasBluetoothCentralBackgroundMode, Self.hasBluetoothPermission else { return }
         _ = manager
@@ -189,6 +221,11 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         logger.setLogLevel(logLevel)
     }
 
+    /// 建立与指定外设的连接。
+    /// - Parameters:
+    ///   - deviceId: 目标设备的 UUID
+    ///   - autoConnect: 是否启用自动重连（iOS 17+ 通过系统选项实现，旧版本仅记录意图）
+    ///   - platformConfig: 平台特定的连接配置（通知开关等）
     func connect(deviceId: String, autoConnect: Bool?, platformConfig: ConnectionPlatformConfig?) throws {
         let peripheral = try deviceId.getPeripheral(manager: manager)
         peripheral.delegate = self
@@ -227,6 +264,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         manager.connect(peripheral, options: options.isEmpty ? nil : options)
     }
 
+    /// 断开与指定外设的连接。
+    /// 取消自动重连标记、调用系统断开 API，并清理所有挂起的 Future。
     func disconnect(deviceId: String) throws {
         autoConnectDevices.remove(deviceId)
 
@@ -256,6 +295,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         }
     }
 
+    /// 清理指定设备的所有挂起 Future 和服务发现任务。
+    /// 当设备断开连接时调用，确保所有等待中的异步操作收到失败回调。
     private func cleanUpConnection(deviceId: String) {
         characteristicReadFutures.removeAll { future in
             if future.deviceId == deviceId {
@@ -301,6 +342,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         activeServiceDiscoveries[deviceId] = nil
     }
 
+    /// 开始异步服务发现流程。
+    /// 如果已有进行中的发现任务，将新请求排入等待队列，待当前任务完成后一并回调。
     func discoverServices(deviceId: String, withDescriptors: Bool, completion: @escaping (Result<[UniversalBleService], Error>) -> Void) {
         guard let peripheral = deviceId.findPeripheral(manager: manager) else {
             completion(.failure(createFlutterError(code: .deviceNotFound, message: "Unknown deviceId:\(deviceId)")))
@@ -336,6 +379,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         discovery.startDiscovery()
     }
 
+    /// 设置特征值的通知或指示订阅。
+    /// 会先校验特征值是否支持对应的属性，再调用系统 API 并注册 Future 等待回调。
     func setNotifiable(deviceId: String, service: String, characteristic: String, bleInputProperty: BleInputProperty, completion: @escaping (Result<Void, Error>) -> Void) {
         logger.logDebug("SET_NOTIFY -> \(deviceId) \(service) \(characteristic) input=\(bleInputProperty)")
 
@@ -369,6 +414,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         ))
     }
 
+    /// 读取指定特征值的值。
+    /// 校验特征值 read 属性后，发起读取请求并注册 Future 等待 didUpdateValueFor 回调。
     func readValue(deviceId: String, service: String, characteristic: String, completion: @escaping (Result<FlutterStandardTypedData, Error>) -> Void) {
         logger.logDebug("READ -> \(deviceId) \(service) \(characteristic)")
 
@@ -410,6 +457,9 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         completion(.success(mtuResult))
     }
 
+    /// 向指定特征值写入数据。
+    /// 根据写入类型（withResponse / withoutResponse）选择对应的 Future 数组，
+    /// withResponse 等待 didWriteValueFor 回调，withoutResponse 等待 peripheralIsReady 回调。
     func writeValue(deviceId: String, service: String, characteristic: String, value: FlutterStandardTypedData, bleOutputProperty: BleOutputProperty, completion: @escaping (Result<Void, Error>) -> Void) {
         logger.logDebug("WRITE -> \(deviceId) \(service) \(characteristic) len=\(value.data.count) property=\(bleOutputProperty)")
 
@@ -502,8 +552,11 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         completion(.failure(createFlutterError(code: .notSupported, message: "requestConnectionPriority is not supported on Apple platforms")))
     }
 
-    // MARK: - CBCentralManagerDelegate
+    // MARK: - CBCentralManagerDelegate 回调
 
+    /// 蓝牙中央管理器状态变更回调。
+    /// 当系统蓝牙状态改变时触发，将新状态通知 Flutter 层，
+    /// 并处理所有等待状态的权限/可用性请求。
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         let state = central.state.toAvailabilityState()
         callbackChannel.onAvailabilityChanged(state: state) { _ in }
@@ -519,6 +572,9 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         }
     }
 
+    /// 发现外设回调。
+    /// 解析广播数据中的制造商数据、服务数据、本地名称等，
+    /// 经过自定义过滤器筛选后通过 CallbackChannel 上报给 Dart 层。
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         peripheral.saveCache()
 
@@ -563,10 +619,13 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         )) { _ in }
     }
 
+    /// 外设连接成功回调
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         callbackChannel.onConnectionChanged(deviceId: peripheral.uuid.uuidString, connected: true, error: nil) { _ in }
     }
 
+    /// 统一处理外设断开事件（从各种断开回调中调用）。
+    /// 清理自动重连标记、通知 Flutter 层、清理所有挂起 Future。
     private func handlePeripheralDisconnection(deviceId: String, error: Error?) {
         autoConnectDevices.remove(deviceId)
         callbackChannel.onConnectionChanged(deviceId: deviceId, connected: false, error: error?.localizedDescription) { _ in }
@@ -611,8 +670,9 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     }
     #endif
 
-    // MARK: - CBPeripheralDelegate
+    // MARK: - CBPeripheralDelegate 回调
 
+    /// 服务发现回调 —— 转发给异步服务发现处理器
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         activeServiceDiscoveries[peripheral.uuid.uuidString]?.handleDidDiscoverServices(peripheral, error: error)
     }
@@ -625,6 +685,10 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         activeServiceDiscoveries[peripheral.uuid.uuidString]?.handleDidDiscoverDescriptorsFor(peripheral, characteristic: characteristic, error: error)
     }
 
+    /// 特征值更新回调（处理读取结果和通知/指示数据）。
+    /// 通过匹配 deviceId + characteristicId + serviceId 来区分是读取操作还是通知事件：
+    /// - 如果匹配到 ReadFuture，将结果回调给等待中的读取操作
+    /// - 如果特征值处于 isNotifying 状态，将数据通过 CallbackChannel 推送给 Dart 层
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         let peripheralId = peripheral.uuid.uuidString
         let characteristicId = characteristic.uuid.uuidStr
@@ -676,6 +740,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         }
     }
 
+    /// 特征值写入完成回调（带响应写入）。
+    /// 匹配对应的 WriteFuture 并回调写入结果。
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         let peripheralId = peripheral.uuid.uuidString
         let characteristicId = characteristic.uuid.uuidStr
@@ -695,6 +761,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         }
     }
 
+    /// 通知/指示状态变更回调。
+    /// 匹配对应的 NotifyFuture 并回调订阅结果（成功或失败）。
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         let peripheralId = peripheral.uuid.uuidString
         let characteristicId = characteristic.uuid.uuidStr
@@ -731,6 +799,8 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         }
     }
 
+    /// 外设准备好发送无响应写入数据回调。
+    /// 匹配对应的 WriteWithoutResponseFuture 并回调成功结果。
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
         let peripheralId = peripheral.uuid.uuidString
         characteristicWriteWithoutResponseFutures.removeAll { future in
@@ -773,12 +843,15 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
     func peripheral(_ peripheral: CBPeripheral, didUpdateMTU mtu: Int) {
         let peripheralId = peripheral.uuid.uuidString
         logger.logDebug("MTU updated for \(peripheralId): mtu=\(mtu)")
-        // MTU changes are handled through the requestMtu completion handler,
-        // not through onConnectionParametersUpdated callback
+        // MTU 变更通过 requestMtu 的完成处理器返回，
+        // 不通过 onConnectionParametersUpdated 回调传递
     }
 }
 
+// MARK: - CBPeripheral 扩展
+
 extension CBPeripheral {
+    /// 将外设缓存到全局 discoveredPeripherals 字典中，便于后续通过 UUID 查找
     func saveCache() {
         discoveredPeripherals[uuid.uuidString] = self
     }

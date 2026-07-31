@@ -26,6 +26,10 @@ import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.BinaryMessenger
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * 通用 BLE 错误码枚举，用于统一 Android/iOS 平台的错误表示。
+ * 每个错误码包含一个原始整数值，用于传递给 Flutter 层。
+ */
 enum class UniversalBleErrorCode(val raw: Int) {
     UNKNOWN_ERROR(0),
     BLUETOOTH_NOT_AVAILABLE(1),
@@ -88,6 +92,11 @@ enum class UniversalBleErrorCode(val raw: Int) {
     CHARACTERISTIC_DOES_NOT_SUPPORT_INDICATE(58)
 }
 
+/**
+ * 将 HCI（主机控制器接口）错误码转换为可读的错误描述字符串。
+ * 参考 Bluetooth Core Specification 定义的 HCI 错误码。
+ * @return 错误描述字符串，若为 GATT_SUCCESS 则返回 null（表示成功）
+ */
 fun Int.parseHciErrorCode(): String? {
     return when (this) {
         BluetoothGatt.GATT_SUCCESS -> null
@@ -164,6 +173,17 @@ fun Int.parseHciErrorCode(): String? {
     }
 }
 
+/**
+ * 打印机连接插件主类，实现 Flutter 插件、蓝牙 GATT 回调和 Activity 感知接口。
+ *
+ * 核心功能包括：
+ * - 管理蓝牙 GATT 连接生命周期（连接、断开、自动重连）
+ * - 处理 GATT 读写、MTU 协商、RSSI 读取等异步操作
+ * - 管理扫描流程（开始扫描、处理扫描结果、停止扫描）
+ * - 处理权限请求和蓝牙开关请求
+ * - 监听配对状态变化和蓝牙状态变化
+ * - 使用 ConcurrentHashMap 存储 GATT 回调，确保并发安全
+ */
 @SuppressLint("MissingPermission")
 class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAware,
     UniversalBlePlatformChannel {
@@ -187,6 +207,11 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     private val cachedServices = ConcurrentHashMap<String, List<UniversalBleService>>()
     private val autoConnectDevices = mutableSetOf<String>()
 
+    // 并发安全的回调存储：使用 ConcurrentHashMap 确保多线程环境下的线程安全。
+    // 所有 GATT 异步操作（read/write/mtu/rssi/descriptor/subscription）的回调
+    // 均存储在对应的 Map 中，key 格式为 "deviceId/service/characteristic"。
+    // 采用 check-then-store 模式：先发起 GATT 操作，成功后再存储回调，
+    // 防止并发调用时回调被覆盖丢失。
     private val readFutures = ConcurrentHashMap<String, (Result<ByteArray>) -> Unit>()
     private val writeFutures = ConcurrentHashMap<String, (Result<Unit>) -> Unit>()
     private val discoverFutures = ConcurrentHashMap<String, MutableList<(Result<List<UniversalBleService>>) -> Unit>>()
@@ -206,6 +231,9 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
     private val pendingPairResults = ConcurrentHashMap<String, (Result<Boolean>) -> Unit>()
 
+    // 广播接收器：监听蓝牙状态变化和设备配对状态变化。
+    // - ACTION_STATE_CHANGED: 蓝牙开关状态变化，通知 Flutter 层更新可用性状态。
+    // - ACTION_BOND_STATE_CHANGED: 设备配对状态变化，处理配对请求的回调。
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
@@ -524,6 +552,13 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         return PermissionHandler.hasPermissions(ctx, permissions)
     }
 
+    // 请求蓝牙相关权限。流程：
+    // 1. 检查 Context 和 Activity 是否可用
+    // 2. 根据 Android 版本获取所需权限列表
+    // 3. 检查权限是否已授予
+    // 4. 防重复请求：如果已有进行中的请求，拒绝新请求
+    // 5. 通过 ActivityResultLauncher 发起权限请求
+    // 6. 将回调暂存到 pendingPermissionResult，等待权限结果回调
     override fun requestPermissions(withAndroidFineLocation: Boolean, callback: (Result<Unit>) -> Unit) {
         val ctx = context
         val act = activityBinding?.activity
@@ -539,8 +574,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             callback(Result.success(Unit))
             return
         }
-        // Reject duplicate permission requests so the in-flight callback isn't
-        // overwritten (and lost). Matches the reference project's behaviour.
+        // 防重复权限请求：如果已有进行中的请求，拒绝新请求以避免回调被覆盖丢失
         if (pendingPermissionResult != null) {
             callback(Result.failure(createFlutterError(UniversalBleErrorCode.OPERATION_IN_PROGRESS, "Permission request already in progress")))
             return
@@ -548,8 +582,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
         val launcher = permissionLauncher
         if (launcher == null) {
-            // No launcher available — fail without stashing pendingPermissionResult,
-            // otherwise the callback would be leaked (never invoked/cleared).
+            // 无可用的 launcher — 直接失败，不存储 pendingPermissionResult 以避免回调泄漏
             callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Cannot launch permission request")))
             return
         }

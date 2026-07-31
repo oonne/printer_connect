@@ -29,15 +29,21 @@ import java.nio.ByteOrder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+// CCCD (客户端配置描述符) UUID，用于通知/指示功能的启用配置
 val ccdCharacteristic: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
+// GATT 缓存池：以设备地址为 key，存储 BluetoothGatt 实例。
+// 使用 ConcurrentHashMap 确保并发安全，在连接/断开时进行增删操作。
+// 用于在多个操作间共享同一个 GATT 连接实例，避免重复创建连接。
 internal val knownGatts = ConcurrentHashMap<String, BluetoothGatt>()
 
+// 配对状态变更事件，封装设备和配对状态
 data class BondStateChange(
     val device: BluetoothDevice,
     val state: Int,
 )
 
+// 将 Android GATT 连接状态常量转换为跨平台 BleConnectionState 枚举
 fun Int.toBleConnectionState(): BleConnectionState {
     return when (this) {
         BluetoothGatt.STATE_CONNECTED -> BleConnectionState.CONNECTED
@@ -48,10 +54,12 @@ fun Int.toBleConnectionState(): BleConnectionState {
     }
 }
 
+// 将字符串列表转换为 UUID 列表，用于服务过滤
 fun List<String>.toUUIDList(): List<UUID> {
     return this.map { UUID.fromString(it) }
 }
 
+// 根据设备 ID 查找已缓存的 BluetoothGatt 实例，若未找到则抛出异常
 fun String.toBluetoothGatt(): BluetoothGatt {
     return this.findGatt()
         ?: throw createFlutterError(
@@ -60,18 +68,22 @@ fun String.toBluetoothGatt(): BluetoothGatt {
         )
 }
 
+// 检查设备 ID 是否存在于 GATT 缓存中
 fun String.isKnownGatt(): Boolean {
     return this.findGatt() != null
 }
 
+// 从 GATT 缓存池中查找设备对应的 BluetoothGatt 实例
 fun String.findGatt(): BluetoothGatt? {
     return knownGatts[this]
 }
 
+// 检查蓝牙适配器是否可用
 fun BluetoothManager?.isBluetoothEnabled(): Boolean {
     return this?.adapter?.isEnabled == true
 }
 
+// 兼容获取广播中的蓝牙设备对象，适配 Android 13+ 的 API 变更
 fun Intent.getBluetoothDeviceCompat(): BluetoothDevice? {
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         this.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
@@ -81,6 +93,7 @@ fun Intent.getBluetoothDeviceCompat(): BluetoothDevice? {
     }
 }
 
+// 从广播 Intent 中解析配对状态变更信息
 fun Intent.getBondStateChange(): BondStateChange? {
     if (action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return null
     val device = this.getBluetoothDeviceCompat() ?: return null
@@ -88,8 +101,10 @@ fun Intent.getBondStateChange(): BondStateChange? {
     return BondStateChange(device, state)
 }
 
+// 判断设备是否已配对（BOND_BONDED 状态）
 fun BluetoothDevice.isBonded(): Boolean = bondState == BluetoothDevice.BOND_BONDED
 
+// 兼容注册广播接收器，适配 Android 13+ 需要指定 RECEIVER_EXPORTED/NOT_EXPORTED
 fun Context.registerReceiverCompat(
     receiver: android.content.BroadcastReceiver,
     filter: IntentFilter,
@@ -104,16 +119,19 @@ fun Context.registerReceiverCompat(
     }
 }
 
+// 将 GATT 实例保存到缓存池中，key 为设备地址
 @SuppressLint("MissingPermission")
 fun BluetoothGatt.saveCacheIfNeeded() {
     knownGatts[this.device.address] = this
 }
 
+// 从缓存池中移除 GATT 实例
 @SuppressLint("MissingPermission")
 fun BluetoothGatt.removeCache() {
     knownGatts.remove(this.device.address)
 }
 
+// 将蓝牙适配器状态转换为跨平台可用性状态枚举
 fun Int.toAvailabilityState(): AvailabilityState {
     return when (this) {
         BluetoothAdapter.STATE_OFF -> AvailabilityState.POWERED_OFF
@@ -135,6 +153,9 @@ val ScanResult.resolvedDeviceName: String?
         }
     }
 
+// 解析扫描结果中的制造商数据列表。
+// 优先从原始字节解析（支持多个公司ID的合并数据），回退到系统 API 的 manufacturerSpecificData。
+// 数据格式遵循 BLE 广播包格式：[长度][类型0xFF][公司ID低字节][公司ID高字节][数据...]
 val ScanResult.manufacturerDataList: List<UniversalManufacturerData>
     get() {
         val raw = scanRecord?.bytes
@@ -145,7 +166,9 @@ val ScanResult.manufacturerDataList: List<UniversalManufacturerData>
                 val fieldLen = raw[i].toInt() and 0xFF
                 if (fieldLen == 0) break
                 if (i + fieldLen >= raw.size) break
+                // 类型 0xFF 表示制造商自定义数据
                 if ((raw[i + 1].toInt() and 0xFF) == 0xFF && fieldLen >= 3) {
+                    // 公司ID为小端序 16 位值
                     val companyId =
                         (raw[i + 2].toInt() and 0xFF) or ((raw[i + 3].toInt() and 0xFF) shl 8)
                     byCompany.getOrPut(companyId) { java.io.ByteArrayOutputStream() }
@@ -159,6 +182,7 @@ val ScanResult.manufacturerDataList: List<UniversalManufacturerData>
                 }
             }
         }
+        // 回退方案：使用系统 API 直接获取制造商数据
         return scanRecord?.manufacturerSpecificData?.toList()?.map { (key, value) ->
             UniversalManufacturerData(key.toLong(), value)
         } ?: emptyList()
@@ -175,6 +199,7 @@ fun <T> SparseArray<T>.toList(): List<Pair<Int, T>> {
     }
 }
 
+// 通过服务 UUID 和特征 UUID 从 GATT 中查找特征对象
 @SuppressLint("MissingPermission")
 fun BluetoothGatt.getCharacteristic(
     service: String,
@@ -183,6 +208,7 @@ fun BluetoothGatt.getCharacteristic(
     return getService(UUID.fromString(service))?.getCharacteristic(UUID.fromString(characteristic))
 }
 
+// 通过反射调用隐藏的 removeBond 方法来取消配对
 @SuppressLint("MissingPermission")
 fun BluetoothDevice.removeBond() {
     try {
@@ -192,6 +218,8 @@ fun BluetoothDevice.removeBond() {
     }
 }
 
+// 解析 GATT 特征的属性位掩码（8 个属性位），转为跨平台 CharacteristicProperty 枚举列表
+// 属性位包括：BROADCAST, READ, WRITE_NO_RESPONSE, WRITE, NOTIFY, INDICATE, SIGNED_WRITE, EXTENDED_PROPERTIES
 fun BluetoothGattCharacteristic.getPropertiesList(): ArrayList<CharacteristicProperty> {
     val propertiesList = arrayListOf<CharacteristicProperty>()
     if (properties and BluetoothGattCharacteristic.PROPERTY_BROADCAST > 0) {
@@ -221,15 +249,18 @@ fun BluetoothGattCharacteristic.getPropertiesList(): ArrayList<CharacteristicPro
     return propertiesList
 }
 
+// 将 Short 值转为字节数组，用于协议数据的字节序转换
 fun Short.toByteArray(byteOrder: ByteOrder = ByteOrder.LITTLE_ENDIAN): ByteArray =
     ByteBuffer.allocate(2).order(byteOrder).putShort(this).array()
 
+// 创建 Flutter 异常对象，包含错误码、消息和详情
 fun createFlutterError(
     code: UniversalBleErrorCode,
     message: String? = null,
     details: String? = null,
 ) = FlutterException(code.raw.toString(), message, details ?: code.toString())
 
+// 解析扫描错误码为可读的错误描述字符串
 fun Int.parseScanErrorMessage(): String {
     return when (this) {
         SCAN_FAILED_ALREADY_STARTED -> "SCAN_FAILED_ALREADY_STARTED"
@@ -242,6 +273,8 @@ fun Int.parseScanErrorMessage(): String {
     }
 }
 
+// 将 BluetoothStatusCodes 错误码转换为通用错误码
+// 用于在 Android 13+ 的新 API 中统一错误表示
 fun Int.parseBluetoothStatusCodeError(): UniversalBleErrorCode? {
     if (this == BluetoothStatusCodes.SUCCESS) return null
     return when (this) {
@@ -323,6 +356,8 @@ fun AndroidScanNumOfMatches.parse(): Int? {
     }
 }
 
+// 将 Android GATT 状态码转换为通用错误码
+// 涵盖标准 GATT 状态码（如 GATT_READ_NOT_PERMITTED）和 HCI 错误码
 fun gattStatusToPrinterConnectErrorCode(code: Int): UniversalBleErrorCode {
     return when (code) {
         BluetoothGatt.GATT_READ_NOT_PERMITTED -> UniversalBleErrorCode.READ_NOT_PERMITTED

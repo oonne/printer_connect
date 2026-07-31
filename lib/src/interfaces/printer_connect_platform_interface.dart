@@ -24,6 +24,12 @@ import 'package:printer_connect/src/utils/ble_typedefs.dart';
 import 'package:printer_connect/src/utils/universal_ble_stream_controller.dart';
 import 'package:printer_connect/src/utils/universal_logger.dart';
 
+/// 平台接口抽象类，定义了 BLE 操作的跨平台 API
+///
+/// 采用 Stream 架构实现事件驱动通信：
+/// - 通过 [UniversalBleStreamController] 管理各类事件流（扫描、连接、特征值、配对等）
+/// - 同时提供传统的回调函数（[OnScanResult]、[OnConnectionChange] 等）作为兼容接口
+/// - 子类（如 PigeonPrinterConnectPlatform）通过原生回调接收事件并分发到 Stream 和回调
 abstract class PrinterConnectPlatform extends PlatformInterface {
   PrinterConnectPlatform() : super(token: _token);
 
@@ -38,7 +44,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
     _instance = instance;
   }
 
-  // Do not use these directly to push updates
+  // 不要直接使用这些回调来推送更新，应通过 Stream 控制器统一分发
   OnScanResult? onScanResultUpdate;
   OnConnectionChange? onConnectionChange;
   OnValueChange? onValueChange;
@@ -50,6 +56,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   final Map<String, BleConnectionParametersUpdated>
       _lastConnectionParametersMap = {};
 
+  // 以下为 Stream 控制器，用于管理异步事件流
   final _scanStreamController = UniversalBleStreamController<BleDevice>();
   final bleConnectionUpdateStreamController =
       UniversalBleStreamController<
@@ -62,7 +69,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   final _pairStateStreamController =
       UniversalBleStreamController<({String deviceId, bool isPaired})>();
 
-  /// Send latest availability state upon subscribing
+  /// 订阅时立即发送最新的蓝牙可用性状态
   late final _availabilityStreamController =
       UniversalBleStreamController<AvailabilityState>(
         initialEvent: getBluetoothAvailabilityState,
@@ -73,13 +80,15 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   Stream<AvailabilityState> get availabilityStream =>
       _availabilityStreamController.stream;
 
-  // A BLE device id is a case-insensitive identifier (a MAC on Android/Windows/Linux, a UUID on Apple), but
-  // platforms report it in different cases — Android upper-cases MACs, Windows/WinRT lower-cases them
-  // (`mac_address_to_str` emits lower-case hex). So we (a) match the event streams case-insensitively, and
-  // (b) key all per-device state by a canonical lower-case id (see updatePairingState /
-  // updateConnectionParameters / CacheHandler) so a device reported in two cases can't split across map
-  // entries. Emitted device ids are left AS the platform reports them, so this is non-breaking for consumers.
-  // Hot paths short-circuit on an exact match before lower-casing.
+  /// 大小写不敏感的设备ID匹配说明：
+  /// BLE 设备ID在不同平台上格式不同：Android/Windows/Linux 使用 MAC 地址，Apple 使用 UUID。
+  /// 各平台报告的大小写也不一致：Android 返回大写 MAC，Windows/WinRT 返回小写 MAC。
+  /// 因此我们采用以下策略：
+  /// 1. 事件流过滤时同时匹配原始大小写和小写化后的 ID
+  /// 2. 所有设备状态以小写化的规范化 ID 作为 Map 的键（见 updatePairingState /
+  /// updateConnectionParameters / CacheHandler），确保同一设备的不同大小写报告不会产生重复条目
+  /// 3. 输出的设备ID保持平台原始大小写，保证向后兼容
+  /// 4. 快速路径：优先尝试精确匹配，仅在不匹配时再进行小写化比较
   Stream<bool> connectionStream(String deviceId) {
     final target = deviceId.toLowerCase();
     return bleConnectionUpdateStreamController.stream
@@ -108,7 +117,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
         .map((e) => e.isPaired);
   }
 
-  /// Update Handlers
+  /// 更新处理器：将事件推入 Stream 控制器，同时触发回调
   void updateScanResult(BleDevice bleDevice) {
     _scanStreamController.add(bleDevice);
     try {
@@ -126,8 +135,8 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
       onConnectionChange?.call(deviceId, isConnected, error);
     } catch (_) {}
     if (!isConnected) {
-      // Clear per-device state by the canonical id so cleanup can't miss an entry stored under another case
-      // (CacheHandler normalizes internally).
+      // 使用规范化（小写）ID清理设备状态，确保不会因大小写不同而遗漏缓存条目
+      // （CacheHandler 内部已进行规范化处理）
       CacheHandler.instance.resetDeviceCache(deviceId);
       _lastConnectionParametersMap.remove(deviceId.toLowerCase());
     }
@@ -158,8 +167,8 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   }
 
   void updatePairingState(String deviceId, bool isPaired) {
-    // Key by the canonical id so the same device reported in another case doesn't create a second entry and
-    // slip past this dedup. The emitted deviceId keeps the platform's case.
+    // 使用规范化 ID 作为键，避免同一设备因不同大小写报告而创建重复条目
+    // 输出的 deviceId 保持平台原始大小写
     final key = deviceId.toLowerCase();
     if (_pairStateMap[key] == isPaired) return;
     _pairStateMap[key] = isPaired;
@@ -170,8 +179,8 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   }
 
   void updateConnectionParameters(BleConnectionParametersUpdated update) {
-    // Key by the canonical id (dropping the now-redundant last.deviceId == update.deviceId check, which would
-    // itself have failed across cases and broken dedup for a device reported in two cases).
+    // 使用规范化 ID 作为键（移除之前冗余的 last.deviceId == update.deviceId 检查，
+    // 该检查会因大小写不匹配而导致同一设备的重复事件无法正确去重）
     final key = update.deviceId.toLowerCase();
     final last = _lastConnectionParametersMap[key];
     if (last != null &&
@@ -271,6 +280,16 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   bool receivesAdvertisements(String deviceId) => true;
 }
 
+/// Pigeon 桥接平台实现类
+///
+/// 基于 Pigeon（Flutter 官方推荐的跨平台通信代码生成工具）实现 Dart 与原生层的通信桥接：
+/// - [_platformChannel]：Dart 调用原生方法的通道（platform channel）
+/// - 实现 [UniversalBleCallbackChannel]：原生层回调 Dart 的通道（callback channel）
+///
+/// 工作流程：
+/// 1. Dart 层方法调用（如 connect、discoverServices）→ 通过 _platformChannel 发送到原生
+/// 2. 原生层执行操作后，通过回调通道（onScanResult、onConnectionChanged 等）返回结果
+/// 3. 回调方法更新 Stream 控制器和传统回调，实现事件分发
 class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
     implements UniversalBleCallbackChannel {
 
