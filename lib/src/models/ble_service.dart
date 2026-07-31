@@ -22,7 +22,7 @@ class BleService {
           _listEquals(characteristics, other.characteristics);
 
   @override
-  int get hashCode => Object.hash(uuid, characteristics);
+  int get hashCode => Object.hash(uuid, Object.hashAll(characteristics));
 
   bool _listEquals(List<BleCharacteristic> a, List<BleCharacteristic> b) {
     if (a.length != b.length) return false;
@@ -82,7 +82,8 @@ class BleCharacteristic {
           _listEquals(descriptors, other.descriptors);
 
   @override
-  int get hashCode => Object.hash(uuid, properties, descriptors);
+  int get hashCode => Object.hash(
+      uuid, Object.hashAll(properties), Object.hashAll(descriptors));
 
   bool _listEquals(List a, List b) {
     if (a.length != b.length) return false;
