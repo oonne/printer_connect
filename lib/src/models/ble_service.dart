@@ -83,7 +83,10 @@ class BleCharacteristic {
 
   @override
   int get hashCode => Object.hash(
-      uuid, Object.hashAll(properties), Object.hashAll(descriptors));
+    uuid,
+    Object.hashAll(properties),
+    Object.hashAll(descriptors),
+  );
 
   bool _listEquals(List a, List b) {
     if (a.length != b.length) return false;
