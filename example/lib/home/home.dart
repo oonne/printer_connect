@@ -96,7 +96,7 @@ class _CentralHomeState extends State<CentralHome> {
     if ((defaultTargetPlatform == TargetPlatform.iOS) &&
         (scanFilter?.withServices ?? []).isEmpty) {
       showSnackbar(
-        "No services filter was set for getting system connected devices. Using default services...",
+        "未设置用于获取系统已连接设备的服务过滤器。将使用默认服务...",
       );
     }
 
@@ -104,7 +104,7 @@ class _CentralHomeState extends State<CentralHome> {
       withServices: scanFilter?.withServices,
     );
     if (devices.isEmpty) {
-      showSnackbar("No System Connected Devices Found");
+      showSnackbar("未找到系统已连接的设备");
     }
     setState(() {
       _bleDevices.clear();
@@ -173,7 +173,7 @@ class _CentralHomeState extends State<CentralHome> {
     return Scaffold(
       appBar: widget.showAppBar
           ? AppBar(
-              title: const Text('Printer Connect - Central'),
+              title: const Text('Printer Connect - 中心设备'),
               elevation: 4,
               actions: [
                 if (_isScanning)
@@ -195,7 +195,7 @@ class _CentralHomeState extends State<CentralHome> {
             child: ResponsiveButtonsGrid(
               children: [
                 PlatformButton(
-                  text: 'Start Scan',
+                  text: '开始扫描',
                   onPressed: () async {
                     setState(() {
                       _bleDevices.clear();
@@ -212,7 +212,7 @@ class _CentralHomeState extends State<CentralHome> {
                   },
                 ),
                 PlatformButton(
-                  text: 'Stop Scan',
+                  text: '停止扫描',
                   onPressed: () async {
                     await PrinterConnect.stopScan();
                     setState(() {
@@ -223,43 +223,43 @@ class _CentralHomeState extends State<CentralHome> {
                 if (BleCapabilities.supportsBluetoothEnableApi)
                   bleAvailabilityState != AvailabilityState.poweredOn
                       ? PlatformButton(
-                          text: 'Enable Bluetooth',
+                          text: '开启蓝牙',
                           onPressed: () async {
                             bool isEnabled =
                                 await PrinterConnect.enableBluetooth();
-                            showSnackbar("BluetoothEnabled: $isEnabled");
+                            showSnackbar("蓝牙已开启: $isEnabled");
                           },
                         )
                       : PlatformButton(
-                          text: 'Disable Bluetooth',
+                          text: '关闭蓝牙',
                           onPressed: () async {
                             bool isDisabled =
                                 await PrinterConnect.disableBluetooth();
-                            showSnackbar("BluetoothDisabled: $isDisabled");
+                            showSnackbar("蓝牙已关闭: $isDisabled");
                           },
                         ),
                 if (BleCapabilities.requiresRuntimePermission) ...[
                   PlatformButton(
-                    text: 'Is Permission Granted',
+                    text: '是否已授予权限',
                     onPressed: () async {
                       try {
                         bool granted = await PrinterConnect.hasPermissions(
                           withAndroidFineLocation: false,
                         );
-                        showSnackbar("Is Permission Granted: $granted");
+                        showSnackbar("是否已授予权限: $granted");
                       } catch (e) {
                         showSnackbar(e.toString());
                       }
                     },
                   ),
                   PlatformButton(
-                    text: 'Request Permissions',
+                    text: '请求权限',
                     onPressed: () async {
                       try {
                         await PrinterConnect.requestPermissions(
                           withAndroidFineLocation: false,
                         );
-                        showSnackbar("Permissions granted");
+                        showSnackbar("权限已授予");
                       } catch (e) {
                         showSnackbar(e.toString());
                       }
@@ -268,16 +268,16 @@ class _CentralHomeState extends State<CentralHome> {
                 ],
                 if (!isTrackingAvailabilityState)
                   PlatformButton(
-                    text: 'Track Availability State',
+                    text: '跟踪可用性状态',
                     onPressed: trackAvailabilityState,
                   ),
                 if (BleCapabilities.supportsConnectedDevicesApi)
                   PlatformButton(
-                    text: 'System Devices',
+                    text: '系统设备',
                     onPressed: _getSystemDevices,
                   ),
                 PlatformButton(
-                  text: 'Queue: ${_queueType.name}',
+                  text: '队列: ${_queueType.name}',
                   onPressed: () {
                     setState(() {
                       _queueType = switch (_queueType) {
@@ -290,18 +290,18 @@ class _CentralHomeState extends State<CentralHome> {
                   },
                 ),
                 PlatformButton(
-                  text: 'Scan Filters',
+                  text: '扫描过滤器',
                   onPressed: _showScanFilterBottomSheet,
                 ),
                 PlatformButton(
                   text: _androidOptions == null
-                      ? 'Android Scan Options'
-                      : 'Android Scan Options •',
+                      ? 'Android 扫描选项'
+                      : 'Android 扫描选项 •',
                   onPressed: _showAndroidScanOptionsBottomSheet,
                 ),
                 if (_hiddenDevices.isNotEmpty)
                   PlatformButton(
-                    text: 'Unhide ${_hiddenDevices.length} Devices',
+                    text: '取消隐藏 ${_hiddenDevices.length} 个设备',
                     onPressed: () {
                       setState(() {
                         _hiddenDevices.clear();
@@ -311,9 +311,9 @@ class _CentralHomeState extends State<CentralHome> {
                 else if (_bleDevices.isNotEmpty)
                   Tooltip(
                     message:
-                        'Hide already discovered devices. When you turn on a new device, it will be easier to spot.',
+                        '隐藏已发现的设备。当开启新设备时，将更容易发现它。',
                     child: PlatformButton(
-                      text: 'Hide Already Discovered Devices',
+                      text: '隐藏已发现的设备',
                       onPressed: () {
                         setState(() {
                           _hiddenDevices.clear();
@@ -325,7 +325,7 @@ class _CentralHomeState extends State<CentralHome> {
                   ),
                 if (_bleDevices.isNotEmpty)
                   PlatformButton(
-                    text: 'Clear List',
+                    text: '清空列表',
                     onPressed: () {
                       setState(() {
                         _bleDevices.clear();
@@ -342,7 +342,7 @@ class _CentralHomeState extends State<CentralHome> {
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: Text(
-                    'Ble Availability : ${bleAvailabilityState?.name}',
+                    '蓝牙可用性 : ${bleAvailabilityState?.name}',
                   ),
                 ),
             ],

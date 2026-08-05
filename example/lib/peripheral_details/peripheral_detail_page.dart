@@ -79,7 +79,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     setState(() {
       this.isConnected = isConnected;
     });
-    _addLog('Connection', isConnected ? "Connected" : "Disconnected");
+    _addLog('连接', isConnected ? "已连接" : "已断开");
     if (this.isConnected) {
       _discoverServices();
     }
@@ -89,12 +89,12 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     String s = String.fromCharCodes(value);
     String data = '$s\nraw :  ${value.toString()}';
     debugPrint('_handleValueChange $s');
-    _addLog("Value", data);
+    _addLog("数值", data);
   }
 
   void _handlePairingStateChange(bool isPaired) {
     debugPrint('isPaired $isPaired');
-    _addLog("PairingStateChange - isPaired", isPaired);
+    _addLog("配对状态变更 - 是否已配对", isPaired);
   }
 
   void _handleConnectionParametersChange(
@@ -105,8 +105,8 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
     debugPrint('ConnectionParametersChange $update');
     _addLog(
-      "ConnectionParametersChange",
-      "Interval: ${update.interval} Latency: ${update.latency} Supervision Timeout: ${update.supervisionTimeout} Status: ${update.status}",
+      "连接参数变更",
+      "间隔: ${update.interval} 延迟: ${update.latency} 监督超时: ${update.supervisionTimeout} 状态: ${update.status}",
     );
   }
 
@@ -133,7 +133,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
         discoveredServices = services;
       });
     } catch (e) {
-      _addLog("DiscoverServicesError", e);
+      _addLog("发现服务错误", e);
     }
   }
 
@@ -144,9 +144,9 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
       Uint8List value = await selectedCharacteristic.read();
       String s = String.fromCharCodes(value);
       String data = '$s\nraw :  ${value.toString()}';
-      _addLog('Read', data);
+      _addLog('读取', data);
     } catch (e) {
-      _addLog('ReadError', e);
+      _addLog('读取错误', e);
     }
   }
 
@@ -162,16 +162,16 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     try {
       value = Uint8List.fromList(hex.decode(binaryCode.text));
     } catch (e) {
-      _addLog('WriteError', "Error parsing hex $e");
+      _addLog('写入错误', "解析十六进制出错: $e");
       return;
     }
 
     try {
       await selectedCharacteristic.write(value, withResponse: withResponse);
-      _addLog('Write${withResponse ? "" : "WithoutResponse"}', value);
+      _addLog(withResponse ? '写入' : '无响应写入', value);
     } catch (e) {
       debugPrint(e.toString());
-      _addLog('WriteError', e);
+      _addLog('写入错误', e);
     }
   }
 
@@ -180,20 +180,20 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     if (selectedCharacteristic == null) return;
     try {
       var subscription = _getCharacteristicSubscription(selectedCharacteristic);
-      if (subscription == null) throw 'No notify or indicate property';
+      if (subscription == null) throw '该特征值不支持 notify 或 indicate 属性';
       await subscription.subscribe();
-      _addLog('BleCharSubscription', 'Subscribed');
+      _addLog('特征值订阅', '已订阅');
     } catch (e) {
-      _addLog('NotifyError', e);
+      _addLog('通知错误', e);
     }
   }
 
   Future<void> _unsubscribeChar() async {
     try {
       await selectedCharacteristic?.unsubscribe();
-      _addLog('BleCharSubscription', 'UnSubscribed');
+      _addLog('特征值订阅', '已取消订阅');
     } catch (e) {
-      _addLog('NotifyError', e);
+      _addLog('通知错误', e);
     }
   }
 
@@ -216,7 +216,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
         BleConnectionPriority.highPerformance,
       );
     } catch (e) {
-      _addLog('RequestConnectionPriorityError', e);
+      _addLog('请求连接优先级错误', e);
     }
   }
 
@@ -224,7 +224,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("${bleDevice.name ?? "Unknown"} - ${bleDevice.deviceId}"),
+        title: Text("${bleDevice.name ?? "未知设备"} - ${bleDevice.deviceId}"),
         elevation: 4,
         actions: [
           Padding(
@@ -250,26 +250,26 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: <Widget>[
                       PlatformButton(
-                        text: 'Connect',
+                        text: '连接',
                         enabled: !isConnected,
                         onPressed: () async {
                           try {
                             await bleDevice.connect();
-                            _addLog("ConnectionResult", true);
+                            _addLog("连接结果", true);
                           } catch (e) {
-                            _addLog('ConnectError (${e.runtimeType})', e);
+                            _addLog('连接错误 (${e.runtimeType})', e);
                           }
                         },
                       ),
                       PlatformButton(
-                        text: 'Disconnect',
+                        text: '断开连接',
                         enabled: isConnected,
                         onPressed: () async {
                           try {
                             await bleDevice.disconnect();
-                            _addLog("DisconnectResult", true);
+                            _addLog("断开连接结果", true);
                           } catch (e) {
-                            _addLog('DisconnectError (${e.runtimeType})', e);
+                            _addLog('断开连接错误 (${e.runtimeType})', e);
                           }
                         },
                       ),
@@ -279,24 +279,24 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                 selectedCharacteristic == null
                     ? Text(
                         discoveredServices.isEmpty
-                            ? "Please discover services"
-                            : "Please select a characteristic",
+                            ? "请发现服务"
+                            : "请选择特征值",
                       )
                     : Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8.0),
                         child: Card(
                           child: ListTile(
                             title: SelectableText(
-                              "Characteristic: ${selectedCharacteristic?.uuid}",
+                              "特征值: ${selectedCharacteristic?.uuid}",
                             ),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 SelectableText(
-                                  "Service: ${selectedService?.uuid}",
+                                  "服务: ${selectedService?.uuid}",
                                 ),
                                 Text(
-                                  "Properties: ${selectedCharacteristic?.properties.map((e) => e.name)}",
+                                  "属性: ${selectedCharacteristic?.properties.map((e) => e.name)}",
                                 ),
                               ],
                             ),
@@ -318,18 +318,18 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                           controller: binaryCode,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
-                              return 'Please enter a value';
+                              return '请输入数值';
                             }
                             try {
                               hex.decode(binaryCode.text);
                               return null;
                             } catch (e) {
-                              return 'Please enter a valid hex value ( without spaces or 0x (e.g. F0BB) )';
+                              return '请输入有效的十六进制值（不含空格或 0x，例如 F0BB）';
                             }
                           },
                           decoration: const InputDecoration(
                             hintText:
-                                "Enter Hex values without spaces or 0x (e.g. F0BB)",
+                                "请输入十六进制值，不含空格或 0x（例如 F0BB）",
                             border: OutlineInputBorder(),
                           ),
                         ),
@@ -346,16 +346,16 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                           _discoverServices();
                         },
                         enabled: isConnected,
-                        text: 'Discover Services',
+                        text: '发现服务',
                       ),
                       PlatformButton(
                         onPressed: () async {
                           _addLog(
-                            'ConnectionState',
+                            '连接状态',
                             await bleDevice.connectionState,
                           );
                         },
-                        text: 'Connection State',
+                        text: '连接状态',
                       ),
                       if (BleCapabilities.supportsConnectionParametersUpdates)
                         PlatformButton(
@@ -363,7 +363,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                           onPressed: () async {
                             _requestConnectionPriority();
                           },
-                          text: 'Request Connection Priority',
+                          text: '请求连接优先级',
                         ),
                       if (BleCapabilities.supportsRequestMtuApi)
                         PlatformButton(
@@ -372,7 +372,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                             int mtu = await bleDevice.requestMtu(247);
                             _addLog('MTU', mtu);
                           },
-                          text: 'Request Mtu',
+                          text: '请求 MTU',
                         ),
                       PlatformButton(
                         enabled:
@@ -382,7 +382,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                               CharacteristicProperty.read,
                             ]),
                         onPressed: _readValue,
-                        text: 'Read',
+                        text: '读取',
                       ),
                       PlatformButton(
                         enabled:
@@ -392,7 +392,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                               CharacteristicProperty.write,
                             ]),
                         onPressed: () => _writeValue(withResponse: true),
-                        text: 'Write',
+                        text: '写入',
                       ),
                       PlatformButton(
                         enabled:
@@ -402,7 +402,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                               CharacteristicProperty.writeWithoutResponse,
                             ]),
                         onPressed: () => _writeValue(withResponse: false),
-                        text: 'WriteWithoutResponse',
+                        text: '无响应写入',
                       ),
                       PlatformButton(
                         enabled:
@@ -413,7 +413,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                               CharacteristicProperty.indicate,
                             ]),
                         onPressed: _subscribeChar,
-                        text: 'Subscribe',
+                        text: '订阅',
                       ),
                       PlatformButton(
                         enabled:
@@ -424,32 +424,32 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                               CharacteristicProperty.indicate,
                             ]),
                         onPressed: _unsubscribeChar,
-                        text: 'Unsubscribe',
+                        text: '取消订阅',
                       ),
                       PlatformButton(
                         enabled: BleCapabilities.supportsAllPairingKinds,
                         onPressed: () async {
                           try {
                             await bleDevice.pair();
-                            _addLog("Pairing Result", true);
+                            _addLog("配对结果", true);
                           } catch (e) {
-                            _addLog('PairError (${e.runtimeType})', e);
+                            _addLog('配对错误 (${e.runtimeType})', e);
                           }
                         },
-                        text: 'Pair',
+                        text: '配对',
                       ),
                       PlatformButton(
                         onPressed: () async {
                           bool? isPaired = await bleDevice.isPaired();
-                          _addLog('isPaired', isPaired);
+                          _addLog('是否已配对', isPaired);
                         },
-                        text: 'isPaired',
+                        text: '是否已配对',
                       ),
                       PlatformButton(
                         onPressed: () async {
                           await bleDevice.unpair();
                         },
-                        text: 'Unpair',
+                        text: '取消配对',
                       ),
                     ],
                   ),

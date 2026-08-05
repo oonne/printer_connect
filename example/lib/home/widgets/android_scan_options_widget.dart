@@ -79,13 +79,13 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Android scan options',
+              'Android 扫描选项',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 4),
             const Text(
-              'All fields are optional. Leaving everything empty scans with the '
-              'platform defaults (same as omitting platformConfig).',
+              '所有字段均为可选。全部留空时将使用平台默认值进行扫描'
+              '（等同于省略 platformConfig）。',
             ),
             const SizedBox(height: 16),
             _SectionTitle('scanMode'),
@@ -101,7 +101,7 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
               controller: _reportDelayController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                hintText: 'e.g. 0 (immediate) or 1000',
+                hintText: '例如 0（立即）或 1000',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
@@ -109,7 +109,7 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
             ),
             const SizedBox(height: 16),
             _SectionTitle(
-              'callbackType (multi-select; OR-folded by the plugin)',
+              'callbackType（多选；由插件按位或合并）',
             ),
             Wrap(
               spacing: 8,
@@ -133,8 +133,8 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
             const SizedBox(height: 16),
             _SectionTitle('legacy'),
             const Text(
-              'null/false: BLE 5 extended advertisements (library default). '
-              'true: legacy BLE 4.x advertisements (API 26+).',
+              'null/false：BLE 5 扩展广播（库默认值）。'
+              'true：传统 BLE 4.x 广播（API 26+）。',
             ),
             const SizedBox(height: 8),
             _SingleSelect<bool>(
@@ -164,7 +164,7 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
               children: [
                 Expanded(
                   child: PlatformButton(
-                    text: 'Reset',
+                    text: '重置',
                     onPressed: () {
                       setState(() {
                         _scanMode = null;
@@ -181,7 +181,7 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: PlatformButton(
-                    text: 'Apply',
+                    text: '应用',
                     onPressed: () {
                       widget.onChanged(_build());
                       Navigator.of(context).pop();
@@ -228,7 +228,7 @@ class _SingleSelect<T> extends StatelessWidget {
       runSpacing: 4,
       children: [
         ChoiceChip(
-          label: const Text('— (default)'),
+          label: const Text('— （默认）'),
           selected: selected == null,
           onSelected: (_) => onChanged(null),
         ),

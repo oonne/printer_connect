@@ -58,11 +58,11 @@ class ServicesListWidget extends StatelessWidget {
                                     ],
                                   ),
                                   Text(
-                                    "Properties: ${e.properties.map((e) => e.name)}",
+                                    "属性: ${e.properties.map((e) => e.name)}",
                                   ),
                                   if (e.descriptors.isNotEmpty)
                                     Text(
-                                      "Descriptors: ${e.descriptors.map((e) => e.uuid).join(', ')}",
+                                      "描述符: ${e.descriptors.map((e) => e.uuid).join(', ')}",
                                     ),
                                 ],
                               ),

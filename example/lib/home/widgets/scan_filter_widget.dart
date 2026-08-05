@@ -38,7 +38,7 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
           try {
             serviceUUids.add(BleUuidParser.string(service.trim()));
           } on FormatException catch (_) {
-            throw Exception("Invalid Service UUID $service");
+            throw Exception("无效的服务 UUID $service");
           }
         }
       }
@@ -54,7 +54,7 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
         for (String manufacturer in manufacturerData) {
           int? companyIdentifier = int.tryParse(manufacturer);
           if (companyIdentifier == null) {
-            throw Exception("Invalid Manufacturer Data $manufacturer");
+            throw Exception("无效的厂商数据 $manufacturer");
           }
           manufacturerDataFilters.add(
             ManufacturerDataFilter(companyIdentifier: companyIdentifier),
@@ -76,7 +76,7 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
         );
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text("Filters Applied")));
+        ).showSnackBar(const SnackBar(content: Text("过滤器已应用")));
       }
       Navigator.pop(context);
     } catch (e) {
@@ -104,18 +104,18 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
           const SizedBox(height: 20),
           Center(
             child: Text(
-              "Scan Filters",
+              "扫描过滤器",
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
-          const Text("Use comma to add multiple values"),
+          const Text("使用逗号添加多个值"),
           const Divider(),
           const SizedBox(height: 10),
           TextFormField(
             controller: widget.namePrefixController,
             maxLines: 2,
             decoration: const InputDecoration(
-              labelText: "Name Prefixes",
+              labelText: "名称前缀",
               border: OutlineInputBorder(),
             ),
           ),
@@ -124,7 +124,7 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
             controller: widget.servicesFilterController,
             maxLines: 2,
             decoration: const InputDecoration(
-              labelText: "Services",
+              labelText: "服务",
               border: OutlineInputBorder(),
             ),
           ),
@@ -133,7 +133,7 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
             controller: widget.manufacturerDataController,
             maxLines: 2,
             decoration: const InputDecoration(
-              labelText: "Manufacturer Data Company IDs",
+              labelText: "厂商数据公司 ID",
               border: OutlineInputBorder(),
             ),
           ),
@@ -142,11 +142,11 @@ class _ScanFilterWidgetState extends State<ScanFilterWidget> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Expanded(
-                child: PlatformButton(text: 'Apply', onPressed: applyFilter),
+                child: PlatformButton(text: '应用', onPressed: applyFilter),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: PlatformButton(text: 'Clear', onPressed: clearFilter),
+                child: PlatformButton(text: '清除', onPressed: clearFilter),
               ),
             ],
           ),

@@ -13,7 +13,7 @@ class ScannedDevicesPlaceholderWidget extends StatelessWidget {
           child: Icon(Icons.bluetooth, color: Colors.grey, size: 100),
         ),
         Text(
-          'Scan For Devices',
+          '扫描设备',
           style: TextStyle(color: Colors.grey, fontSize: 22),
         ),
       ],

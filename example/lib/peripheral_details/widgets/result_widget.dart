@@ -20,7 +20,7 @@ class ResultWidget extends StatelessWidget {
             padding: const EdgeInsets.all(8.0),
             child: ListTile(
               tileColor: Theme.of(context).secondaryHeaderColor,
-              title: const Text("Logs"),
+              title: const Text("日志"),
               onTap: () {
                 onClearTap(null);
               },

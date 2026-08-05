@@ -7,7 +7,7 @@ void main() async {
   await PrinterConnect.setLogLevel(BleLogLevel.verbose);
   runApp(
     MaterialApp(
-      title: 'Printer Connect',
+      title: 'Printer Connect 蓝牙连接',
       debugShowCheckedModeBanner: false,
       darkTheme: ThemeData.dark(),
       themeMode: ThemeMode.system,

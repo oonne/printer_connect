@@ -830,3 +830,9 @@ Future<void> resetBleState() async {
 ## 示例应用
 
 此仓库包含一个[示例应用](example/)，演示了基本的扫描和设备通信工作流程。
+
+测试应用使用方式: 先通过 flutter devices 获取到设备ID，然后运行以下命令:
+```
+cd example
+flutter run -d <device_id>
+```

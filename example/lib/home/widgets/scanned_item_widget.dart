@@ -14,7 +14,7 @@ class ScannedItemWidget extends StatelessWidget {
     if (rawManufacturerData.isNotEmpty) {
       manufacturerData = rawManufacturerData.first;
     }
-    if (name == null || name.isEmpty) name = 'N/A';
+    if (name == null || name.isEmpty) name = '未知设备';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0),
       child: Card(
@@ -29,11 +29,11 @@ class ScannedItemWidget extends StatelessWidget {
                 child: Text(manufacturerData.toString()),
               ),
               if (bleDevice.timestampDateTime != null)
-                Text("Last Seen: ${bleDevice.timestampDateTime}"),
+                Text("最后发现: ${bleDevice.timestampDateTime}"),
               bleDevice.paired == true
-                  ? const Text("Paired", style: TextStyle(color: Colors.green))
+                  ? const Text("已配对", style: TextStyle(color: Colors.green))
                   : const Text(
-                      "Not Paired",
+                      "未配对",
                       style: TextStyle(color: Colors.red),
                     ),
             ],
