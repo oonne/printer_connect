@@ -319,7 +319,10 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
 
   pigeon.AndroidOptions _convertAndroidOptions(PlatformConfig? config) {
     final androidConfig = config?.android;
-    if (androidConfig == null) return pigeon.AndroidOptions();
+    if (androidConfig == null) {
+      // 默认扫描传统 BLE 4.x（legacy）广播，适配主流打印机
+      return pigeon.AndroidOptions(legacy: true);
+    }
 
     return pigeon.AndroidOptions(
       requestLocationPermission: androidConfig.requestLocationPermission,
@@ -328,7 +331,8 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
       callbackType: androidConfig.callbackType,
       matchMode: androidConfig.matchMode,
       numOfMatches: androidConfig.numOfMatches,
-      legacy: androidConfig.legacy,
+      // 默认扫描传统 BLE 4.x（legacy）广播，适配主流打印机
+      legacy: androidConfig.legacy ?? true,
     );
   }
 

@@ -103,6 +103,8 @@ PrinterConnect.stopScan();
 PrinterConnect.isScanning();
 ```
 
+> **提示**：在 Android 上，`startScan()` 默认扫描传统 BLE 4.x 广播（`legacy: true`），适配主流打印机。如需扫描 BLE 5 扩展广播，请通过 `PlatformConfig(android: AndroidOptions(legacy: false))` 显式设置。
+
 在启动扫描之前，请确保蓝牙可用：
 
 ```dart
@@ -656,23 +658,6 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
   - 如果在 manifest 中声明了位置权限，则始终请求位置权限（BLE 扫描必需）
   - `withAndroidFineLocation` 参数将被忽略
 
-#### Android 扫描选项
-
-默认情况下，扫描 BLE 5 扩展广播（API 26+，与之前版本无变化）。对于传统 BLE 4.x 设备（例如 ESP32），设置 `legacy: true`。
-
-```dart
-PrinterConnect.startScan(
-  platformConfig: PlatformConfig(
-    android: AndroidOptions(
-      legacy: true, // 对于扩展 BLE 5（默认）请省略
-      scanMode: AndroidScanMode.lowLatency,
-      callbackType: [AndroidScanCallbackType.allMatches],
-      requestLocationPermission: false,
-    ),
-  ),
-);
-```
-
 #### 后台扫描（ForegroundTask）
 
 Printer Connect 支持在 Android 上从后台服务（例如使用 `flutter_foreground_task` 或类似包）进行 BLE 扫描。在没有 Activity 的后台上下文中运行时：
@@ -744,7 +729,7 @@ await PrinterConnect.requestPermissions(
 );
 ```
 
-> **注意**：调用 `startScan()` 时，会自动请求权限。要在扫描期间配置位置权限请求，请在 `AndroidOptions` 上使用 `requestLocationPermission`（参见 [Android 扫描选项](#android-扫描选项)）：
+> **注意**：调用 `startScan()` 时，会自动请求权限。要在扫描期间配置位置权限请求，请在 `AndroidOptions` 上使用 `requestLocationPermission`：
 
 ```dart
 PrinterConnect.startScan(

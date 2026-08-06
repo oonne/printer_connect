@@ -133,8 +133,8 @@ class _AndroidScanOptionsWidgetState extends State<AndroidScanOptionsWidget> {
             const SizedBox(height: 16),
             _SectionTitle('legacy'),
             const Text(
-              'null/false：BLE 5 扩展广播（库默认值）。'
-              'true：传统 BLE 4.x 广播（API 26+）。',
+              'null（默认）/true：传统 BLE 4.x 广播。'
+              'false：BLE 5 扩展广播（API 26+）。',
             ),
             const SizedBox(height: 8),
             _SingleSelect<bool>(
