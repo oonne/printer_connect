@@ -1,6 +1,6 @@
 name: printer_connect
 description: "A Flutter plugin for connecting to printers."
-version: 0.0.2
+version: 0.0.3
 repository: https://github.com/oonne/printer_connect
 issue_tracker: https://github.com/oonne/printer_connect/issues
 homepage: https://github.com/oonne/printer_connect
