@@ -225,14 +225,9 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
     private var permissionLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null
     private var pendingPermissionResult: ((Boolean) -> Unit)? = null
-    private var usePermissionLegacyFallback: Boolean = false
-    private val permissionRequestCode: Int = 0x9001
 
     private var enableBluetoothLauncher: androidx.activity.result.ActivityResultLauncher<Intent>? = null
     private var pendingEnableResult: ((Boolean) -> Unit)? = null
-    private var useEnableBluetoothLegacyFallback: Boolean = false
-    private val enableBluetoothRequestCode: Int = 0x9002
-    private var pendingEnableCallback: ((Boolean) -> Unit)? = null
 
     private val pendingPairResults = ConcurrentHashMap<String, (Result<Boolean>) -> Unit>()
 
@@ -329,12 +324,10 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         this.activityBinding = binding
         setupPermissionLauncher(binding)
         setupEnableBluetoothLauncher(binding)
-        registerLegacyListenersIfNeeded(binding)
         PrinterConnectLogger.logDebug("Activity attached")
     }
 
     override fun onDetachedFromActivity() {
-        activityBinding?.let { unregisterLegacyListenersIfNeeded(it) }
         activityBinding = null
         PrinterConnectLogger.logDebug("Activity detached")
     }
@@ -343,96 +336,44 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         this.activityBinding = binding
         setupPermissionLauncher(binding)
         setupEnableBluetoothLauncher(binding)
-        registerLegacyListenersIfNeeded(binding)
         PrinterConnectLogger.logDebug("Activity reattached for config changes")
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
-        activityBinding?.let { unregisterLegacyListenersIfNeeded(it) }
         activityBinding = null
         PrinterConnectLogger.logDebug("Activity detached for config changes")
     }
 
-    /**
-     * 注册旧版 Activity 兼容监听器（基于 onRequestPermissionsResult / onActivityResult）。
-     * 当宿主 Activity 不是 ComponentActivity（即 Flutter 3.16 之前的 FlutterActivity）时，
-     * registerForActivityResult 不可用，此时通过 ActivityPluginBinding 添加监听器作为回退。
-     */
-    private fun registerLegacyListenersIfNeeded(binding: ActivityPluginBinding) {
-        if (!usePermissionLegacyFallback && !useEnableBluetoothLegacyFallback) return
-
-        if (usePermissionLegacyFallback) {
-            binding.addRequestPermissionsResultListener { requestCode, permissions, grantResults ->
-                if (requestCode != permissionRequestCode) false else {
-                    val allGranted = PermissionHandler.handlePermissionResult(permissions, grantResults)
-                    pendingPermissionResult?.invoke(allGranted)
-                    pendingPermissionResult = null
-                    PrinterConnectLogger.logDebug("Legacy permission result: $allGranted")
-                    true
-                }
-            }
-        }
-
-        if (useEnableBluetoothLegacyFallback) {
-            binding.addActivityResultListener { requestCode, resultCode, _ ->
-                if (requestCode != enableBluetoothRequestCode) false else {
-                    val success = resultCode == android.app.Activity.RESULT_OK
-                    pendingEnableCallback?.invoke(success)
-                    pendingEnableCallback = null
-                    PrinterConnectLogger.logDebug("Legacy enable bluetooth result: $success")
-                    true
-                }
-            }
-        }
-    }
-
-    private fun unregisterLegacyListenersIfNeeded(binding: ActivityPluginBinding) {
-        // Activity 销毁/重建时 binding 会失效，但由于 FlutterPluginBinding 的
-        // addXxxListener 返回的是 lambda，没有直接的 remove 接口，
-        // 新 Activity 附加时会重新注册。这里无需显式移除。
-    }
-
     private fun setupPermissionLauncher(binding: ActivityPluginBinding) {
         val componentActivity = binding.activity as? androidx.activity.ComponentActivity
-        if (componentActivity != null) {
-            permissionLauncher = componentActivity.registerForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
-            ) { grants: Map<String, Boolean> ->
-                val allGranted = grants.values.all { it }
-                pendingPermissionResult?.invoke(allGranted)
-                pendingPermissionResult = null
-                PrinterConnectLogger.logDebug("Permission result: $allGranted")
-            }
-            usePermissionLegacyFallback = false
-            PrinterConnectLogger.logDebug("Permission launcher setup via ComponentActivity")
-        } else {
-            // 回退：旧版 FlutterActivity (FragmentActivity) 不支持 registerForActivityResult。
-            // 通过 Activity.requestPermissions + ActivityPluginBinding 的
-            // addRequestPermissionsResultListener 进行兼容。
-            permissionLauncher = null
-            usePermissionLegacyFallback = true
-            PrinterConnectLogger.logDebug("Permission launcher setup via legacy fallback (non-ComponentActivity)")
+        if (componentActivity == null) {
+            throw IllegalStateException("Activity must be a ComponentActivity (Flutter 3.16+)")
         }
+        permissionLauncher = componentActivity.registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+        ) { grants: Map<String, Boolean> ->
+            val allGranted = grants.values.all { it }
+            pendingPermissionResult?.invoke(allGranted)
+            pendingPermissionResult = null
+            PrinterConnectLogger.logDebug("Permission result: $allGranted")
+        }
+        PrinterConnectLogger.logDebug("Permission launcher setup via ComponentActivity")
     }
 
     private fun setupEnableBluetoothLauncher(binding: ActivityPluginBinding) {
         val componentActivity = binding.activity as? androidx.activity.ComponentActivity
-        if (componentActivity != null) {
-            enableBluetoothLauncher = componentActivity.registerForActivityResult(
-                androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
-            ) { result ->
-                val success = result.resultCode == android.app.Activity.RESULT_OK
-                pendingEnableResult?.invoke(success)
-                pendingEnableResult = null
-                PrinterConnectLogger.logDebug("Enable Bluetooth result: $success")
-            }
-            useEnableBluetoothLegacyFallback = false
-            PrinterConnectLogger.logDebug("Enable bluetooth launcher setup via ComponentActivity")
-        } else {
-            enableBluetoothLauncher = null
-            useEnableBluetoothLegacyFallback = true
-            PrinterConnectLogger.logDebug("Enable bluetooth launcher setup via legacy fallback (non-ComponentActivity)")
+        if (componentActivity == null) {
+            throw IllegalStateException("Activity must be a ComponentActivity (Flutter 3.16+)")
         }
+        enableBluetoothLauncher = componentActivity.registerForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val success = result.resultCode == android.app.Activity.RESULT_OK
+            pendingEnableResult?.invoke(success)
+            pendingEnableResult = null
+            PrinterConnectLogger.logDebug("Enable Bluetooth result: $success")
+        }
+        PrinterConnectLogger.logDebug("Enable bluetooth launcher setup via ComponentActivity")
     }
 
     private fun registerBroadcastReceiver() {
@@ -639,7 +580,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             return
         }
 
-        // 优先使用 ComponentActivity 的 ActivityResultLauncher
         val launcher = permissionLauncher
         if (launcher != null) {
             pendingPermissionResult = { granted ->
@@ -655,22 +595,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             return
         }
 
-        // 回退：基于 Activity.requestPermissions 的旧版 API
-        if (usePermissionLegacyFallback) {
-            pendingPermissionResult = { granted ->
-                handler.post {
-                    if (granted) {
-                        callback(Result.success(Unit))
-                    } else {
-                        callback(Result.failure(createFlutterError(UniversalBleErrorCode.BLUETOOTH_PERMISSION_DENIED, "Permissions denied")))
-                    }
-                }
-            }
-            act.requestPermissions(permissions.toTypedArray(), permissionRequestCode)
-            return
-        }
-
-        // 既没有 launcher 也没有回退标记 — 直接失败
         callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Cannot launch permission request")))
     }
 
@@ -686,40 +610,19 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         }
         // Reject duplicate enable requests so the in-flight callback isn't
         // overwritten (and lost). Matches the reference project's behaviour.
-        if (pendingEnableResult != null || pendingEnableCallback != null) {
+        if (pendingEnableResult != null) {
             callback(Result.failure(createFlutterError(UniversalBleErrorCode.OPERATION_IN_PROGRESS, "Bluetooth enable request already in progress")))
             return
         }
 
         val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
 
-        // 优先使用 ComponentActivity 的 ActivityResultLauncher
         val launcher = enableBluetoothLauncher
         if (launcher != null) {
             pendingEnableResult = { success ->
                 handler.post { callback(Result.success(success)) }
             }
             launcher.launch(enableIntent)
-            return
-        }
-
-        // 回退：基于 startActivityForResult 的旧版 API
-        if (useEnableBluetoothLegacyFallback) {
-            val act = activityBinding?.activity
-            if (act == null) {
-                callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "Activity is required for enabling Bluetooth")))
-                return
-            }
-            pendingEnableCallback = { success ->
-                handler.post {
-                    if (success) {
-                        callback(Result.success(true))
-                    } else {
-                        callback(Result.failure(createFlutterError(UniversalBleErrorCode.BLUETOOTH_NOT_ENABLED, "Bluetooth not enabled")))
-                    }
-                }
-            }
-            act.startActivityForResult(enableIntent, enableBluetoothRequestCode)
             return
         }
 

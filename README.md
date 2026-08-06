@@ -3,7 +3,7 @@
 [![pub package](https://img.shields.io/pub/v/printer_connect?label=printer_connect&color=blue)](https://pub.dev/packages/printer_connect)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-lightgrey)](https://github.com/oonne/printer_connect)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.3.0-blue.svg?logo=flutter)](https://flutter.dev)
+[![Flutter](https://img.shields.io/badge/Flutter-%3E%3D3.16.0-blue.svg?logo=flutter)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-%3E%3D3.1.3-blue.svg?logo=dart)](https://dart.dev)
 [![pub points](https://img.shields.io/pub/points/printer_connect?color=2E7D32)](https://pub.dev/packages/printer_connect/score)
 [![GitHub stars](https://img.shields.io/github/stars/oonne/printer_connect?style=social)](https://github.com/oonne/printer_connect)
@@ -644,16 +644,6 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 
 - 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → 配对 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
 - 权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
-
-
-#### Android 兼容性说明（重要）
-
-本插件在权限请求和启用蓝牙的实现上**同时支持两种 Activity 层级**，以兼容所有 Flutter 3.3+ 版本：
-
-- **新路径**：`ComponentActivity.registerForActivityResult`（需要 `androidx.activity:activity:1.8.0+`，即 Flutter 3.16+ 默认的 `FlutterActivity` 继承链）。
-- **旧路径（自动回退）**：`Activity.requestPermissions` + `ActivityPluginBinding.addRequestPermissionsResultListener`（适用于 Flutter 3.16 之前的版本，或任何非 `ComponentActivity` 子类）。
-
-插件会在运行时自动检测 Activity 类型并选择合适的实现。如果在旧版 Flutter 上仍遇到 `Cannot launch permission request` 错误，请确认你的 `FlutterActivity` 子类没有覆盖 `onRequestPermissionsResult`。
 
 #### Android 位置权限
 

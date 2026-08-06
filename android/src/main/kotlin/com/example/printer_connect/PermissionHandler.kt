@@ -22,30 +22,6 @@ object PermissionHandler {
         return true
     }
 
-    // 通过 Activity 请求运行时权限
-    fun requestPermissions(
-        activity: android.app.Activity,
-        permissions: List<String>,
-        requestCode: Int
-    ) {
-        val permissionsArray = permissions.toTypedArray()
-        activity.requestPermissions(permissionsArray, requestCode)
-    }
-
-    // 处理权限请求结果：全部授权返回 true，否则返回 false
-    fun handlePermissionResult(
-        permissions: Array<String>,
-        grantResults: IntArray
-    ): Boolean {
-        if (grantResults.isEmpty()) return false
-        for (result in grantResults) {
-            if (result != PackageManager.PERMISSION_GRANTED) {
-                return false
-            }
-        }
-        return true
-    }
-
     // 根据 Android 版本和使用场景获取所需权限列表。
     //
     // Android 12+ (API 31+) 权限策略：
