@@ -571,30 +571,10 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 
 ```xml
 <key>NSBluetoothAlwaysUsageDescription</key>
-<string>This app uses Bluetooth to scan, connect, and communicate with nearby devices.</string>
+<string>This app requires Bluetooth access to discover, connect, and print to your printer.</string>
 ```
 
 使用清晰、面向用户的文本来解释你的应用为什么需要蓝牙。
-
-#### iOS 后台状态恢复
-
-在 iOS 上，当你的应用声明了 `bluetooth-central` 后台模式并且已授予蓝牙权限时，中央管理器会在启动时使用 `CBCentralManagerOptionRestoreIdentifierKey` 创建，因此 CoreBluetooth 可以[在后台重新启动你的应用](https://developer.apple.com/documentation/technotes/tn3115-bluetooth-state-restoration-app-relaunch-rules)，当连接的外设活动时，并将活动连接交还给插件。如果尚未授予权限，创建将延迟到调用中央 BLE API（如 `startScan()` 或 `connect()`）时。
-
-要选择加入，请声明 `Uses Bluetooth LE accessories` 后台模式。启用后，在 `Info.plist` 中你应该有：
-
-```xml
-<key>UIBackgroundModes</key>
-<array>
-  ...
-  <string>bluetooth-central</string>
-  ...
-</array>
-```
-
-注意：
-
-- 没有 `bluetooth-central` 后台模式，`CBCentralManager` 会在第一次中央 BLE API 调用时懒加载创建，并且状态恢复被禁用。
-- 重新启动后，插件会重新采用恢复的外设，并为任何仍在连接的外设发出 `onConnectionChanged`，因此你的 Dart 代码可以从中断处恢复。
 
 ### 手动请求权限
 

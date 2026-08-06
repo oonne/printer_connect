@@ -9,23 +9,27 @@ on:
 
 jobs:
   publish:
-    environment: pub-dev
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-    env:
-      PUB_HOSTED_URL: https://pub.dev
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
+      # Install Flutter SDK (provides flutter SDK dependency for dart pub get)
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
 
+      # Install standalone Dart SDK (provides OIDC-capable dart pub publish)
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
       - name: Verify toolchain
         run: |
+          which dart
           dart --version
           flutter --version
           dart pub get
@@ -53,6 +57,14 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Version unchanged ($NEW_VERSION), skip publishing."
           fi
+
+      - name: Debug OIDC config
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: $ACTIONS_ID_TOKEN_REQUEST_URL"
+          echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
+          echo "GITHUB_REF_NAME: $GITHUB_REF_NAME"
+          echo "GITHUB_ENV: $GITHUB_ENV"
 
       - name: Dry-run check
         if: steps.version.outputs.changed == 'true'
