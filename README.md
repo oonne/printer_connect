@@ -8,21 +8,94 @@
 [![pub points](https://img.shields.io/pub/points/printer_connect?color=2E7D32)](https://pub.dev/packages/printer_connect/score)
 [![GitHub stars](https://img.shields.io/github/stars/oonne/printer_connect?style=social)](https://github.com/oonne/printer_connect)
 
-用于连接打印机。
+连接打印机。
 
-## 功能
+## 快速开始
 
-- [扫描](#扫描)
-- [连接](#连接)
-- [发现服务](#发现服务)
-- [读取与写入数据](#读取与写入数据)
-- [蓝牙可用性](#蓝牙可用性)
-- [请求 MTU](#请求-mtu)
-- [读取 RSSI](#读取-rssi)
-- [请求连接优先级（仅限 Android）](#请求连接优先级)
-- [错误处理](#错误处理)
-- [UUID 格式无关性](#uuid-格式无关性)
-- [平台特定设置](#平台特定设置)
+安装插件: 
+```
+flutter pub add printer_connect
+```
+
+在需要使用它的地方导入：
+
+```dart
+import 'dart:typed_data';
+import 'package:printer_connect/printer_connect.dart';
+```
+
+### Android
+
+在你的 AndroidManifest.xml 文件中添加以下权限。
+
+```xml
+<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation" />
+<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+```
+
+- 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
+- 权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
+
+#### Android 位置权限
+
+`requestPermissions()` 中的 `withAndroidFineLocation` 参数控制 Android 上的位置权限请求：
+
+- **Android 12+ (API 31+)**：
+  - `withAndroidFineLocation: true` → 请求 `ACCESS_FINE_LOCATION` 权限
+  - `withAndroidFineLocation: false` → 仅请求蓝牙权限（无位置权限）
+- **Android 11 及以下**：
+  - 如果在 manifest 中声明了位置权限，则始终请求位置权限（BLE 扫描必需）
+  - `withAndroidFineLocation` 参数将被忽略
+
+### iOS
+
+对于蓝牙使用，请将以下键添加到应用的 `Info.plist` 中：
+
+- `NSBluetoothAlwaysUsageDescription`：应用请求蓝牙访问时显示的消息。
+
+示例：
+
+```xml
+<key>NSBluetoothAlwaysUsageDescription</key>
+<string>This app requires Bluetooth access to discover, connect, and print to your printer.</string>
+```
+
+使用清晰、面向用户的文本来解释你的应用为什么需要蓝牙。
+
+### 手动请求权限
+
+**调用 `requestPermissions()` 是可选的。** 在调用 `startScan()` 时会自动请求权限。但是，如果你想手动调用 `requestPermissions()`，可以：
+
+- 在扫描之前请求权限（例如，单独处理权限错误）
+- 确保在其他操作（如 `connect()`、`read()`、`write()` 等）之前授予权限，这些操作不会自动请求权限
+
+`requestPermissions()` 方法：
+
+- 如果所有权限已经授予或被用户接受，则成功返回
+- 如果权限被用户拒绝，则抛出 `PrinterConnectException`
+
+```dart
+// 可选：手动请求权限
+await PrinterConnect.requestPermissions(
+  withAndroidFineLocation: false,
+);
+```
+
+> **注意**：调用 `startScan()` 时，会自动请求权限。要在扫描期间配置位置权限请求，请在 `AndroidOptions` 上使用 `requestLocationPermission`：
+
+```dart
+PrinterConnect.startScan(
+  platformConfig: PlatformConfig(
+    android: AndroidOptions(
+      requestLocationPermission: false,
+    ),
+  ),
+);
+```
 
 ## API 
 
@@ -44,26 +117,6 @@
 | [连接参数变化回调](#请求连接优先级) | onConnectionParametersChange | ✔️ | ❌ |
 | [读取信号强度](#读取-rssi) | readRssi | ✔️ | ✔️ |
 | [请求权限](#手动请求权限) | requestPermissions | ✔️ | ✔️ |
-
-## 快速开始
-
-在你的 `pubspec.yaml` 中添加 `printer_connect`：
-
-```yaml
-dependencies:
-  printer_connect:
-    git:
-      url: https://github.com/oonne/printer_connect.git
-```
-
-然后在你想使用它的地方导入：
-
-```dart
-import 'dart:typed_data';
-import 'package:printer_connect/printer_connect.dart';
-```
-
-> **重要**：在使用 BLE 功能之前，请务必查看[权限](#权限)部分，了解目标平台（Android 或 iOS）需要进行哪些设置。
 
 ### 扫描
 
@@ -475,85 +528,6 @@ BleUuidParser.number(0x180A); // "0000180a-0000-1000-8000-00805f9b34fb"
 
 ```dart
 BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // true
-```
-
-## 平台特定设置
-
-你需要执行以下设置：
-
-### Android
-
-#### Manifest 权限
-
-在你的 AndroidManifest.xml 文件中添加以下权限。
-
-```xml
-<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-    android:usesPermissionFlags="neverForLocation" />
-<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-```
-
-- 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
-- 权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
-
-#### Android 位置权限
-
-`requestPermissions()` 中的 `withAndroidFineLocation` 参数控制 Android 上的位置权限请求：
-
-- **Android 12+ (API 31+)**：
-  - `withAndroidFineLocation: true` → 请求 `ACCESS_FINE_LOCATION` 权限
-  - `withAndroidFineLocation: false` → 仅请求蓝牙权限（无位置权限）
-- **Android 11 及以下**：
-  - 如果在 manifest 中声明了位置权限，则始终请求位置权限（BLE 扫描必需）
-  - `withAndroidFineLocation` 参数将被忽略
-
-### iOS
-
-对于蓝牙使用，请将以下键添加到应用的 `Info.plist` 中：
-
-- `NSBluetoothAlwaysUsageDescription`：应用请求蓝牙访问时显示的消息。
-
-示例：
-
-```xml
-<key>NSBluetoothAlwaysUsageDescription</key>
-<string>This app requires Bluetooth access to discover, connect, and print to your printer.</string>
-```
-
-使用清晰、面向用户的文本来解释你的应用为什么需要蓝牙。
-
-### 手动请求权限
-
-**调用 `requestPermissions()` 是可选的。** 在调用 `startScan()` 时会自动请求权限。但是，如果你想手动调用 `requestPermissions()`，可以：
-
-- 在扫描之前请求权限（例如，单独处理权限错误）
-- 确保在其他操作（如 `connect()`、`read()`、`write()` 等）之前授予权限，这些操作不会自动请求权限
-
-`requestPermissions()` 方法：
-
-- 如果所有权限已经授予或被用户接受，则成功返回
-- 如果权限被用户拒绝，则抛出 `PrinterConnectException`
-
-```dart
-// 可选：手动请求权限
-await PrinterConnect.requestPermissions(
-  withAndroidFineLocation: false,
-);
-```
-
-> **注意**：调用 `startScan()` 时，会自动请求权限。要在扫描期间配置位置权限请求，请在 `AndroidOptions` 上使用 `requestLocationPermission`：
-
-```dart
-PrinterConnect.startScan(
-  platformConfig: PlatformConfig(
-    android: AndroidOptions(
-      requestLocationPermission: false,
-    ),
-  ),
-);
 ```
 
 ## 日志记录
