@@ -264,11 +264,5 @@ void main() {
         await PrinterConnect.requestPermissions();
       }, returnsNormally);
     });
-
-    test('clearQueue returns normally', () {
-      expect(() {
-        PrinterConnect.clearQueue();
-      }, returnsNormally);
-    });
   });
 }

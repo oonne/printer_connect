@@ -24,7 +24,6 @@ class _CentralHomeState extends State<CentralHome> {
   final _bleDevices = <BleDevice>[];
   final _hiddenDevices = <BleDevice>[];
   bool _isScanning = false;
-  QueueType _queueType = QueueType.global;
   TextEditingController servicesFilterController = TextEditingController();
   TextEditingController namePrefixController = TextEditingController();
   TextEditingController manufacturerDataController = TextEditingController();
@@ -44,7 +43,6 @@ class _CentralHomeState extends State<CentralHome> {
       PrinterConnect.setInstance(MockPrinterConnect());
     }
 
-    PrinterConnect.queueType = _queueType;
     PrinterConnect.timeout = const Duration(seconds: 10);
 
     PrinterConnect.scanStream.listen((result) {
@@ -276,19 +274,6 @@ class _CentralHomeState extends State<CentralHome> {
                     text: '系统设备',
                     onPressed: _getSystemDevices,
                   ),
-                PlatformButton(
-                  text: '队列: ${_queueType.name}',
-                  onPressed: () {
-                    setState(() {
-                      _queueType = switch (_queueType) {
-                        QueueType.global => QueueType.perDevice,
-                        QueueType.perDevice => QueueType.none,
-                        QueueType.none => QueueType.global,
-                      };
-                      PrinterConnect.queueType = _queueType;
-                    });
-                  },
-                ),
                 PlatformButton(
                   text: '扫描过滤器',
                   onPressed: _showScanFilterBottomSheet,
