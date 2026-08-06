@@ -226,33 +226,6 @@ bool isConnected = await bleDevice.isConnected;
 BleConnectionState connectionState = await bleDevice.connectionState;
 ```
 
-#### 自动连接
-
-通过将 `autoConnect` 参数设置为 `true`，你可以启用自动重连。启用后，当设备再次可用时，系统将自动尝试重新连接。
-
-```dart
-await bleDevice.connect(autoConnect: true);
-```
-
-#### 后台连接事件（iOS）
-
-默认情况下，挂起的应用不会因连接事件而被唤醒。设置 `AppleConnectionOptions` 可在应用挂起时发生连接事件时，让系统提醒用户并将你的应用重新启动到后台——例如，在手机锁屏时进行锻炼期间，保持对先前配对外设的反应（自动重连）。在 iOS 上需要 `bluetooth-central` 后台模式。
-
-注意：系统可能会为这些事件向用户显示提醒，并且 `notifyOnNotification` 会针对每个特征通知触发，因此请仅启用你需要的功能。
-
-```dart
-await bleDevice.connect(
-  autoConnect: true,
-  platformConfig: ConnectionPlatformConfig(
-    apple: AppleConnectionOptions(
-      notifyOnConnection: true,
-      notifyOnDisconnection: true,
-      notifyOnNotification: true,
-    ),
-  ),
-);
-```
-
 ### 发现服务
 
 建立连接后，需要发现服务。此方法将发现所有服务及其特征。
@@ -587,23 +560,6 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 - **Android 11 及以下**：
   - 如果在 manifest 中声明了位置权限，则始终请求位置权限（BLE 扫描必需）
   - `withAndroidFineLocation` 参数将被忽略
-
-#### 后台扫描（ForegroundTask）
-
-Printer Connect 支持在 Android 上从后台服务（例如使用 `flutter_foreground_task` 或类似包）进行 BLE 扫描。在没有 Activity 的后台上下文中运行时：
-
-- **如果已授予权限**：扫描正常工作
-- **如果未授予权限**：抛出错误，消息为"权限未授予且活动不可用以请求它们"
-
-**最佳实践**：在启动任何后台 BLE 操作之前，在应用处于前台时请求权限：
-
-```dart
-// 在前台请求权限（例如，在应用设置期间）
-await PrinterConnect.requestPermissions();
-
-// 稍后，在你的 ForegroundTask 中，如果已授予权限，扫描将正常工作
-await PrinterConnect.startScan();
-```
 
 ### iOS
 
