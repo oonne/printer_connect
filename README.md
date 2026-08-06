@@ -631,28 +631,20 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 
 #### Manifest 权限
 
-在你的 AndroidManifest.xml 文件中添加以下权限。**权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
+在你的 AndroidManifest.xml 文件中添加以下权限。
 
 ```xml
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+    android:usesPermissionFlags="neverForLocation" />
 <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
 <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="28" />
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
 ```
 
-**关于 ACCESS_FINE_LOCATION 与 BLUETOOTH_SCAN：**
+- 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → 配对 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
+- 权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
 
-- **Android 12+ (API 31+)**：`neverForLocation` 为 Android 12+ 上的推荐配置 — 应用无需位置权限即可进行 BLE 扫描。
-- **Android 11 及以下 (API ≤ 30)**：`ACCESS_FINE_LOCATION` 是 BLE 扫描的**强制要求**。由于已将 `ACCESS_FINE_LOCATION` 的 `maxSdkVersion` 设为 `30`，该权限仅在适用的系统版本上生效。
-- **不使用位置信息进行扫描**：保持 `neverForLocation`，不要声明 `ACCESS_FINE_LOCATION`。
-- **使用 iBeacons 或通过 BLE 推断位置**：移除 `neverForLocation`，并**移除** `ACCESS_FINE_LOCATION` 的 `maxSdkVersion` 限制：
-
-  ```xml
-  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-  ```
 
 #### Android 兼容性说明（重要）
 
