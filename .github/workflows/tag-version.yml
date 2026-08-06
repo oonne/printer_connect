@@ -1,0 +1,64 @@
+name: Tag on pubspec version bump
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pubspec.yaml'
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Detect version change
+        id: version
+        run: |
+          set -e
+          NEW_VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
+          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected pubspec version: $NEW_VERSION"
+
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            OLD_VERSION=$(git show HEAD~1:pubspec.yaml 2>/dev/null \
+                          | grep -E '^version:' | head -1 | awk '{print $2}' || echo "")
+          else
+            OLD_VERSION=""
+          fi
+          echo "old=$OLD_VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$NEW_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            TAG="v$NEW_VERSION"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "Version changed: '$OLD_VERSION' -> '$NEW_VERSION' (tag: $TAG)"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged ($NEW_VERSION), skip tagging."
+          fi
+
+      - name: Push version tag
+        if: steps.version.outputs.changed == 'true'
+        env:
+          TAG_PUSH_TOKEN: ${{ secrets.TAG_PUSH_TOKEN }}
+        run: |
+          set -e
+          TAG="${{ steps.version.outputs.tag }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag '$TAG' already exists, skip."
+            exit 0
+          fi
+
+          git tag -a "$TAG" -m "Release $TAG"
+          git remote set-url origin "https://x-access-token:${TAG_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "$TAG"
+          echo "Pushed tag '$TAG' successfully."

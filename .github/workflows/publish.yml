@@ -1,11 +1,9 @@
-name: Publish to pub.dev on version bump
+name: Publish to pub.dev on version tag
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'pubspec.yaml'
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
 
 jobs:
   publish:
@@ -15,9 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      # Install Flutter SDK (provides flutter SDK dependency for dart pub get)
+      # Install Flutter SDK (provides flutter SDK dependency)
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -34,42 +32,16 @@ jobs:
           flutter --version
           dart pub get
 
-      - name: Detect version change
-        id: version
-        run: |
-          set -e
-          NEW_VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
-          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Detected new version: $NEW_VERSION"
-
-          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-            OLD_VERSION=$(git show HEAD~1:pubspec.yaml 2>/dev/null \
-                          | grep -E '^version:' | head -1 | awk '{print $2}' || echo "")
-          else
-            OLD_VERSION=""
-          fi
-          echo "old=$OLD_VERSION" >> "$GITHUB_OUTPUT"
-
-          if [ -n "$NEW_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Version changed: '$OLD_VERSION' -> '$NEW_VERSION'"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "Version unchanged ($NEW_VERSION), skip publishing."
-          fi
-
       - name: Debug OIDC config
-        if: steps.version.outputs.changed == 'true'
         run: |
+          echo "GITHUB_REF: $GITHUB_REF"
+          echo "GITHUB_REF_TYPE: $GITHUB_REF_TYPE"
+          echo "GITHUB_REF_NAME: $GITHUB_REF_NAME"
           echo "ACTIONS_ID_TOKEN_REQUEST_URL: $ACTIONS_ID_TOKEN_REQUEST_URL"
           echo "GITHUB_REPOSITORY: $GITHUB_REPOSITORY"
-          echo "GITHUB_REF_NAME: $GITHUB_REF_NAME"
-          echo "GITHUB_ENV: $GITHUB_ENV"
 
       - name: Dry-run check
-        if: steps.version.outputs.changed == 'true'
         run: dart pub publish --dry-run
 
       - name: Publish
-        if: steps.version.outputs.changed == 'true'
         run: dart pub publish --force
