@@ -219,7 +219,7 @@ fun createFlutterError(
     code: UniversalBleErrorCode,
     message: String? = null,
     details: String? = null,
-) = FlutterException(code.raw.toString(), message, details ?: code.toString())
+) = FlutterError(code.raw.toString(), message, details ?: code.toString())
 
 // 解析扫描错误码为可读的错误描述字符串
 fun Int.parseScanErrorMessage(): String {

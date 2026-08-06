@@ -408,7 +408,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         subscriptionFutures.clear()
     }
 
-    private fun completeFuturesForDevice(deviceId: String, error: FlutterException) {
+    private fun completeFuturesForDevice(deviceId: String, error: FlutterError) {
         val deviceDisconnectedError = error
 
         discoverFutures.remove(deviceId)?.forEach { callback ->
@@ -1214,7 +1214,7 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
             } else {
                 callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, "requestConnectionPriority returned false")))
             }
-        } catch (e: FlutterException) {
+        } catch (e: FlutterError) {
             callback(Result.failure(e))
         } catch (e: Exception) {
             PrinterConnectLogger.logError("Error requesting connection priority: ${e.message}")
