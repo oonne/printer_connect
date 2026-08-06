@@ -9,16 +9,18 @@ on:
 
 jobs:
   publish:
-    environment: pub-dev   # 若勾选了 "Require GitHub Actions environment"，必须加此行
+    environment: pub-dev
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 2
 
-      - uses: dart-lang/setup-dart@v1
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
       - name: Detect version change
         id: version
@@ -26,6 +28,7 @@ jobs:
           set -e
           NEW_VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
           echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected new version: $NEW_VERSION"
 
           if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
             OLD_VERSION=$(git show HEAD~1:pubspec.yaml 2>/dev/null \
@@ -45,8 +48,8 @@ jobs:
 
       - name: Dry-run check
         if: steps.version.outputs.changed == 'true'
-        run: dart pub publish --dry-run
+        run: flutter pub publish --dry-run
 
       - name: Publish
         if: steps.version.outputs.changed == 'true'
-        run: dart pub publish --force
+        run: flutter pub publish --force
