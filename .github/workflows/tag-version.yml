@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 2
+          persist-credentials: false  # 不保存 GITHUB_TOKEN，确保 push 用 PAT 以触发新 workflow
 
       - name: Detect version change
         id: version
