@@ -1,4 +1,4 @@
-name: Publish to pub.dev on version tag
+name: 打tag的时候自动发布到pub.dev
 
 on:
   push:

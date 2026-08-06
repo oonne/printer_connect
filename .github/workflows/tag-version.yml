@@ -1,4 +1,4 @@
-name: Tag on pubspec version bump
+name: 更新版本自动打tag
 
 on:
   push:
