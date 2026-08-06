@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
+    env:
+      PUB_HOSTED_URL: https://pub.dev
     steps:
       - uses: actions/checkout@v5
         with:
@@ -21,6 +23,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+
+      - name: Verify toolchain
+        run: |
+          dart --version
+          flutter --version
+          dart pub get
 
       - name: Detect version change
         id: version
@@ -48,8 +56,8 @@ jobs:
 
       - name: Dry-run check
         if: steps.version.outputs.changed == 'true'
-        run: flutter pub publish --dry-run
+        run: dart pub publish --dry-run
 
       - name: Publish
         if: steps.version.outputs.changed == 'true'
-        run: flutter pub publish --force
+        run: dart pub publish --force
