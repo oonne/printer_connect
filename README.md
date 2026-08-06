@@ -631,7 +631,7 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 
 #### Manifest 权限
 
-将以下权限添加到你的 AndroidManifest.xml 文件中：
+在你的 AndroidManifest.xml 文件中添加以下权限。**权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
 
 ```xml
 <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -642,12 +642,26 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
 ```
 
-如果你的应用使用 iBeacons 或 BLUETOOTH_SCAN 来确定位置，请将最后 2 个权限改为：
+**关于 ACCESS_FINE_LOCATION 与 BLUETOOTH_SCAN：**
 
-```xml
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-```
+- **Android 12+ (API 31+)**：`neverForLocation` 为 Android 12+ 上的推荐配置 — 应用无需位置权限即可进行 BLE 扫描。
+- **Android 11 及以下 (API ≤ 30)**：`ACCESS_FINE_LOCATION` 是 BLE 扫描的**强制要求**。由于已将 `ACCESS_FINE_LOCATION` 的 `maxSdkVersion` 设为 `30`，该权限仅在适用的系统版本上生效。
+- **不使用位置信息进行扫描**：保持 `neverForLocation`，不要声明 `ACCESS_FINE_LOCATION`。
+- **使用 iBeacons 或通过 BLE 推断位置**：移除 `neverForLocation`，并**移除** `ACCESS_FINE_LOCATION` 的 `maxSdkVersion` 限制：
+
+  ```xml
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+  ```
+
+#### Android 兼容性说明（重要）
+
+本插件在权限请求和启用蓝牙的实现上**同时支持两种 Activity 层级**，以兼容所有 Flutter 3.3+ 版本：
+
+- **新路径**：`ComponentActivity.registerForActivityResult`（需要 `androidx.activity:activity:1.8.0+`，即 Flutter 3.16+ 默认的 `FlutterActivity` 继承链）。
+- **旧路径（自动回退）**：`Activity.requestPermissions` + `ActivityPluginBinding.addRequestPermissionsResultListener`（适用于 Flutter 3.16 之前的版本，或任何非 `ComponentActivity` 子类）。
+
+插件会在运行时自动检测 Activity 类型并选择合适的实现。如果在旧版 Flutter 上仍遇到 `Cannot launch permission request` 错误，请确认你的 `FlutterActivity` 子类没有覆盖 `onRequestPermissionsResult`。
 
 #### Android 位置权限
 

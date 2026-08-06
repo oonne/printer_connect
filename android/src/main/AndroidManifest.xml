@@ -1,15 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.printer_connect">
 
-    <!-- Bluetooth permissions -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-
     <!-- Required for BLE scanning -->
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <!--
+      注意：本插件不强制声明具体的 uses-permission，以避免与宿主 App 的 manifest 合并冲突。
+      宿主 App 必须按照 README 的【Android Manifest 权限】章节在自身的 AndroidManifest.xml 中
+      声明所需的蓝牙和位置权限。
+    -->
 </manifest>
