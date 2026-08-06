@@ -53,11 +53,6 @@ class ConnectionException extends PrinterConnectException {
   }
 }
 
-/// 配对异常类，用于处理设备配对/取消配对相关的错误
-class PairingException extends PrinterConnectException {
-  PairingException(super.message, {super.code, super.details});
-}
-
 /// 写入异常类，用于处理特征值写入操作的错误
 class WriteException extends PrinterConnectException {
   WriteException(super.message, {super.code, super.details});
@@ -182,11 +177,6 @@ PrinterConnectException errorParser(PlatformException e) {
       // 26: MTU 错误
       case 26: // mtuRequestFailed MTU请求失败
         return MtuException(message, code: code, details: details);
-      // 27-28: 配对错误（Pairing errors）
-      case 27: // pairingFailed 配对失败
-      case 28: // unpairFailed 取消配对失败
-      case 36: // notPaired 未配对
-        return PairingException(message, code: code, details: details);
       // 29: 安全错误（Security errors）
       case 29: // securityError 安全错误
       case 42: // insufficientAuthentication 认证不足
@@ -216,9 +206,6 @@ PrinterConnectException errorParser(PlatformException e) {
       return ConnectionException(message, code: code, details: details);
     case 'disconnect_error':
       return ConnectionException(message, code: code, details: details);
-    case 'pairing_error':
-    case 'pair_error':
-      return PairingException(message, code: code, details: details);
     case 'write_error':
     case 'write_failed':
       return WriteException(message, code: code, details: details);

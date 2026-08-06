@@ -53,16 +53,6 @@ abstract class PrinterConnectPlatformMock extends PrinterConnectPlatform {
   }
 
   @override
-  Future<bool> isPaired(String deviceId) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<bool> pair(String deviceId) {
-    throw UnimplementedError();
-  }
-
-  @override
   Future<Uint8List> readValue(
     String deviceId,
     String service,
@@ -105,11 +95,6 @@ abstract class PrinterConnectPlatformMock extends PrinterConnectPlatform {
 
   @override
   Future<void> stopScan() {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<void> unpair(String deviceId) {
     throw UnimplementedError();
   }
 

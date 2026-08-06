@@ -3,7 +3,7 @@ import 'package:printer_connect/printer_connect.dart';
 
 /// BLE 设备信息封装类
 ///
-/// 包含蓝牙设备的所有基础信息，如设备 ID、名称、信号强度、配对状态、
+/// 包含蓝牙设备的所有基础信息，如设备 ID、名称、信号强度、
 /// 可用服务列表、厂商数据、服务数据以及时间戳等。
 class BleDevice {
   /// 设备唯一标识符
@@ -17,9 +17,6 @@ class BleDevice {
 
   /// 信号强度指示值（RSSI），单位 dBm
   int? rssi;
-
-  /// 是否已配对
-  bool? paired;
 
   /// 设备支持的服务 UUID 列表
   List<String> services;
@@ -40,7 +37,6 @@ class BleDevice {
     required this.deviceId,
     required String? name,
     this.rssi,
-    this.paired,
     this.services = const [],
     this.isSystemDevice,
     this.manufacturerDataList = const [],
@@ -100,7 +96,6 @@ class BleDevice {
           name == other.name &&
           rawName == other.rawName &&
           rssi == other.rssi &&
-          paired == other.paired &&
           _listEquals(services, other.services) &&
           isSystemDevice == other.isSystemDevice &&
           _listEquals(manufacturerDataList, other.manufacturerDataList) &&
@@ -113,7 +108,6 @@ class BleDevice {
     name,
     rawName,
     rssi,
-    paired,
     services,
     isSystemDevice,
     manufacturerDataList,
@@ -141,5 +135,5 @@ class BleDevice {
 
   @override
   String toString() =>
-      'BleDevice(deviceId: $deviceId, name: $name, rssi: $rssi, paired: $paired, services: ${services.length}, isSystemDevice: $isSystemDevice, manufacturerDataList: ${manufacturerDataList.length}, serviceData: ${serviceData.length}, timestamp: $timestamp)';
+      'BleDevice(deviceId: $deviceId, name: $name, rssi: $rssi, services: ${services.length}, isSystemDevice: $isSystemDevice, manufacturerDataList: ${manufacturerDataList.length}, serviceData: ${serviceData.length}, timestamp: $timestamp)';
 }

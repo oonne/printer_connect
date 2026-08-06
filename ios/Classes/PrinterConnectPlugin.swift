@@ -503,18 +503,6 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         }
     }
 
-    func isPaired(deviceId _: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        completion(.failure(createFlutterError(code: .notSupported)))
-    }
-
-    func pair(deviceId _: String, completion: @escaping (Result<Bool, Error>) -> Void) {
-        completion(.failure(createFlutterError(code: .notImplemented)))
-    }
-
-    func unPair(deviceId _: String) throws {
-        throw createFlutterError(code: .notSupported)
-    }
-
     func getSystemDevices(withServices: [String], completion: @escaping (Result<[UniversalBleScanResult], Error>) -> Void) {
         var servicesFilter = withServices
         if servicesFilter.isEmpty {
@@ -610,7 +598,6 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         callbackChannel.onScanResult(result: UniversalBleScanResult(
             deviceId: peripheral.uuid.uuidString,
             name: displayName,
-            isPaired: nil,
             rssi: RSSI as? Int64,
             manufacturerDataList: manufacturerDataList,
             serviceData: serviceData,

@@ -260,7 +260,6 @@ enum CharacteristicProperty: Int {
 struct UniversalBleScanResult: Hashable {
   var deviceId: String
   var name: String? = nil
-  var isPaired: Bool? = nil
   var rssi: Int64? = nil
   var manufacturerDataList: [UniversalManufacturerData]? = nil
   var serviceData: [String: FlutterStandardTypedData]? = nil
@@ -272,17 +271,15 @@ struct UniversalBleScanResult: Hashable {
   static func fromList(_ pigeonVar_list: [Any?]) -> UniversalBleScanResult? {
     let deviceId = pigeonVar_list[0] as! String
     let name: String? = nilOrValue(pigeonVar_list[1])
-    let isPaired: Bool? = nilOrValue(pigeonVar_list[2])
-    let rssi: Int64? = nilOrValue(pigeonVar_list[3])
-    let manufacturerDataList: [UniversalManufacturerData]? = nilOrValue(pigeonVar_list[4])
-    let serviceData: [String: FlutterStandardTypedData]? = nilOrValue(pigeonVar_list[5])
-    let services: [String]? = nilOrValue(pigeonVar_list[6])
-    let timestamp: Int64? = nilOrValue(pigeonVar_list[7])
+    let rssi: Int64? = nilOrValue(pigeonVar_list[2])
+    let manufacturerDataList: [UniversalManufacturerData]? = nilOrValue(pigeonVar_list[3])
+    let serviceData: [String: FlutterStandardTypedData]? = nilOrValue(pigeonVar_list[4])
+    let services: [String]? = nilOrValue(pigeonVar_list[5])
+    let timestamp: Int64? = nilOrValue(pigeonVar_list[6])
 
     return UniversalBleScanResult(
       deviceId: deviceId,
       name: name,
-      isPaired: isPaired,
       rssi: rssi,
       manufacturerDataList: manufacturerDataList,
       serviceData: serviceData,
@@ -294,7 +291,6 @@ struct UniversalBleScanResult: Hashable {
     return [
       deviceId,
       name,
-      isPaired,
       rssi,
       manufacturerDataList,
       serviceData,
@@ -306,14 +302,13 @@ struct UniversalBleScanResult: Hashable {
     if Swift.type(of: lhs) != Swift.type(of: rhs) {
       return false
     }
-    return deepEqualsPrinterConnect(lhs.deviceId, rhs.deviceId) && deepEqualsPrinterConnect(lhs.name, rhs.name) && deepEqualsPrinterConnect(lhs.isPaired, rhs.isPaired) && deepEqualsPrinterConnect(lhs.rssi, rhs.rssi) && deepEqualsPrinterConnect(lhs.manufacturerDataList, rhs.manufacturerDataList) && deepEqualsPrinterConnect(lhs.serviceData, rhs.serviceData) && deepEqualsPrinterConnect(lhs.services, rhs.services) && deepEqualsPrinterConnect(lhs.timestamp, rhs.timestamp)
+    return deepEqualsPrinterConnect(lhs.deviceId, rhs.deviceId) && deepEqualsPrinterConnect(lhs.name, rhs.name) && deepEqualsPrinterConnect(lhs.rssi, rhs.rssi) && deepEqualsPrinterConnect(lhs.manufacturerDataList, rhs.manufacturerDataList) && deepEqualsPrinterConnect(lhs.serviceData, rhs.serviceData) && deepEqualsPrinterConnect(lhs.services, rhs.services) && deepEqualsPrinterConnect(lhs.timestamp, rhs.timestamp)
   }
 
   func hash(into hasher: inout Hasher) {
     hasher.combine("UniversalBleScanResult")
     deepHashPrinterConnect(value: deviceId, hasher: &hasher)
     deepHashPrinterConnect(value: name, hasher: &hasher)
-    deepHashPrinterConnect(value: isPaired, hasher: &hasher)
     deepHashPrinterConnect(value: rssi, hasher: &hasher)
     deepHashPrinterConnect(value: manufacturerDataList, hasher: &hasher)
     deepHashPrinterConnect(value: serviceData, hasher: &hasher)
@@ -971,9 +966,6 @@ protocol UniversalBlePlatformChannel {
   func readValue(deviceId: String, service: String, characteristic: String, completion: @escaping (Result<FlutterStandardTypedData, Error>) -> Void)
   func requestMtu(deviceId: String, expectedMtu: Int64, completion: @escaping (Result<Int64, Error>) -> Void)
   func writeValue(deviceId: String, service: String, characteristic: String, value: FlutterStandardTypedData, bleOutputProperty: BleOutputProperty, completion: @escaping (Result<Void, Error>) -> Void)
-  func isPaired(deviceId: String, completion: @escaping (Result<Bool, Error>) -> Void)
-  func pair(deviceId: String, completion: @escaping (Result<Bool, Error>) -> Void)
-  func unPair(deviceId: String) throws
   func getSystemDevices(withServices: [String], completion: @escaping (Result<[UniversalBleScanResult], Error>) -> Void)
   func getConnectionState(deviceId: String) throws -> BleConnectionState
   func readRssi(deviceId: String, completion: @escaping (Result<Int64, Error>) -> Void)
@@ -1234,55 +1226,6 @@ class UniversalBlePlatformChannelSetup {
     } else {
       writeValueChannel.setMessageHandler(nil)
     }
-    let isPairedChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.isPaired\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
-    if let api = api {
-      isPairedChannel.setMessageHandler { message, reply in
-        let args = message as! [Any?]
-        let deviceIdArg = args[0] as! String
-        api.isPaired(deviceId: deviceIdArg) { result in
-          switch result {
-          case .success(let res):
-            reply(wrapResult(res))
-          case .failure(let error):
-            reply(wrapError(error))
-          }
-        }
-      }
-    } else {
-      isPairedChannel.setMessageHandler(nil)
-    }
-    let pairChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.pair\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
-    if let api = api {
-      pairChannel.setMessageHandler { message, reply in
-        let args = message as! [Any?]
-        let deviceIdArg = args[0] as! String
-        api.pair(deviceId: deviceIdArg) { result in
-          switch result {
-          case .success(let res):
-            reply(wrapResult(res))
-          case .failure(let error):
-            reply(wrapError(error))
-          }
-        }
-      }
-    } else {
-      pairChannel.setMessageHandler(nil)
-    }
-    let unPairChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.unPair\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
-    if let api = api {
-      unPairChannel.setMessageHandler { message, reply in
-        let args = message as! [Any?]
-        let deviceIdArg = args[0] as! String
-        do {
-          try api.unPair(deviceId: deviceIdArg)
-          reply(wrapResult(nil))
-        } catch {
-          reply(wrapError(error))
-        }
-      }
-    } else {
-      unPairChannel.setMessageHandler(nil)
-    }
     let getSystemDevicesChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.getSystemDevices\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
       getSystemDevicesChannel.setMessageHandler { message, reply in
@@ -1370,7 +1313,6 @@ class UniversalBlePlatformChannelSetup {
 /// Generated protocol from Pigeon that represents Flutter messages that can be called from Swift.
 protocol UniversalBleCallbackChannelProtocol {
   func onAvailabilityChanged(state stateArg: AvailabilityState, completion: @escaping (Result<Void, PigeonError>) -> Void)
-  func onPairStateChange(deviceId deviceIdArg: String, isPaired isPairedArg: Bool, error errorArg: String?, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onScanResult(result resultArg: UniversalBleScanResult, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onValueChanged(deviceId deviceIdArg: String, characteristicId characteristicIdArg: String, value valueArg: FlutterStandardTypedData, timestamp timestampArg: Int64?, completion: @escaping (Result<Void, PigeonError>) -> Void)
   func onConnectionChanged(deviceId deviceIdArg: String, connected connectedArg: Bool, error errorArg: String?, completion: @escaping (Result<Void, PigeonError>) -> Void)
@@ -1390,24 +1332,6 @@ class UniversalBleCallbackChannel: UniversalBleCallbackChannelProtocol {
     let channelName: String = "dev.flutter.pigeon.printer_connect.UniversalBleCallbackChannel.onAvailabilityChanged\(messageChannelSuffix)"
     let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
     channel.sendMessage([stateArg] as [Any?]) { response in
-      guard let listResponse = response as? [Any?] else {
-        completion(.failure(createConnectionError(withChannelName: channelName)))
-        return
-      }
-      if listResponse.count > 1 {
-        let code: String = listResponse[0] as! String
-        let message: String? = nilOrValue(listResponse[1])
-        let details: String? = nilOrValue(listResponse[2])
-        completion(.failure(PigeonError(code: code, message: message, details: details)))
-      } else {
-        completion(.success(()))
-      }
-    }
-  }
-  func onPairStateChange(deviceId deviceIdArg: String, isPaired isPairedArg: Bool, error errorArg: String?, completion: @escaping (Result<Void, PigeonError>) -> Void) {
-    let channelName: String = "dev.flutter.pigeon.printer_connect.UniversalBleCallbackChannel.onPairStateChange\(messageChannelSuffix)"
-    let channel = FlutterBasicMessageChannel(name: channelName, binaryMessenger: binaryMessenger, codec: codec)
-    channel.sendMessage([deviceIdArg, isPairedArg, errorArg] as [Any?]) { response in
       guard let listResponse = response as? [Any?] else {
         completion(.failure(createConnectionError(withChannelName: channelName)))
         return

@@ -181,7 +181,7 @@ fun Int.parseHciErrorCode(): String? {
  * - 处理 GATT 读写、MTU 协商、RSSI 读取等异步操作
  * - 管理扫描流程（开始扫描、处理扫描结果、停止扫描）
  * - 处理权限请求和蓝牙开关请求
- * - 监听配对状态变化和蓝牙状态变化
+ * - 监听蓝牙状态变化
  * - 使用 ConcurrentHashMap 存储 GATT 回调，确保并发安全
  */
 @SuppressLint("MissingPermission")
@@ -229,11 +229,8 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
     private var enableBluetoothLauncher: androidx.activity.result.ActivityResultLauncher<Intent>? = null
     private var pendingEnableResult: ((Boolean) -> Unit)? = null
 
-    private val pendingPairResults = ConcurrentHashMap<String, (Result<Boolean>) -> Unit>()
-
-    // 广播接收器：监听蓝牙状态变化和设备配对状态变化。
+    // 广播接收器：监听蓝牙状态变化。
     // - ACTION_STATE_CHANGED: 蓝牙开关状态变化，通知 Flutter 层更新可用性状态。
-    // - ACTION_BOND_STATE_CHANGED: 设备配对状态变化，处理配对请求的回调。
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
@@ -245,35 +242,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                         callbackChannel?.onAvailabilityChanged(availabilityState) { _ -> }
                     }
                     PrinterConnectLogger.logDebug("Bluetooth state changed: $availabilityState")
-                }
-                BluetoothDevice.ACTION_BOND_STATE_CHANGED -> {
-                    val bondStateChange = intent.getBondStateChange() ?: return
-                    val deviceAddress = bondStateChange.device.address
-                    val bondState = bondStateChange.state
-                    val isPaired = bondState == BluetoothDevice.BOND_BONDED
-                    val errorMessage = if (bondState == BluetoothDevice.ERROR) "Failed to Pair" else null
-                    handler.post {
-                        callbackChannel?.onPairStateChange(deviceAddress, isPaired, errorMessage) { _ -> }
-                    }
-                    PrinterConnectLogger.logDebug("Bond state changed for $deviceAddress: bondState=$bondState, bonded=$isPaired")
-
-                    val pendingCallback = pendingPairResults.remove(deviceAddress)
-                    if (pendingCallback != null) {
-                        when {
-                            isPaired -> {
-                                handler.post { pendingCallback.invoke(Result.success(true)) }
-                            }
-                            bondState == BluetoothDevice.ERROR -> {
-                                handler.post { pendingCallback.invoke(Result.success(false)) }
-                            }
-                            bondState == BluetoothDevice.BOND_NONE -> {
-                                handler.post { pendingCallback.invoke(Result.success(false)) }
-                            }
-                            bondState == BluetoothDevice.BOND_BONDING -> {
-                                PrinterConnectLogger.logDebug("Bonding in progress for $deviceAddress")
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -378,7 +346,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
 
     private fun registerBroadcastReceiver() {
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
         context?.registerReceiverCompat(broadcastReceiver, filter, exported = true)
     }
 
@@ -772,11 +739,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         val device = result.device
         val address = device.address
         val name = result.resolvedDeviceName
-        val isPaired = try {
-            device.isBonded()
-        } catch (_: Exception) {
-            false
-        }
         val timestamp = System.currentTimeMillis()
 
         val serviceUuids = mutableListOf<java.util.UUID>()
@@ -793,7 +755,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         val scanResult = UniversalBleScanResult(
             deviceId = address,
             name = name,
-            isPaired = isPaired,
             rssi = result.rssi.toLong(),
             manufacturerDataList = result.manufacturerDataList,
             serviceData = result.serviceData,
@@ -1261,74 +1222,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         }
     }
 
-    override fun isPaired(deviceId: String, callback: (Result<Boolean>) -> Unit) {
-        val adapter = bluetoothAdapter
-        if (adapter == null) {
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.BLUETOOTH_NOT_AVAILABLE, "Bluetooth adapter unavailable")))
-            return
-        }
-        return try {
-            val device = adapter.getRemoteDevice(deviceId)
-            callback(Result.success(device.isBonded()))
-        } catch (e: Exception) {
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, e.toString())))
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    override fun pair(deviceId: String, callback: (Result<Boolean>) -> Unit) {
-        val adapter = bluetoothAdapter
-        if (adapter == null) {
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.BLUETOOTH_NOT_AVAILABLE, "Bluetooth adapter unavailable")))
-            return
-        }
-
-        try {
-            val device = adapter.getRemoteDevice(deviceId)
-            val pendingFuture = pendingPairResults.remove(deviceId)
-
-            // If already paired, complete any pending futures and return success
-            if (device.isBonded()) {
-                pendingFuture?.invoke(Result.success(true))
-                callback(Result.success(true))
-                return
-            }
-
-            if (pendingFuture != null) {
-                callback(Result.failure(createFlutterError(UniversalBleErrorCode.OPERATION_IN_PROGRESS, "Pairing already in progress")))
-                return
-            }
-
-            if (device.createBond()) {
-                pendingPairResults[deviceId] = callback
-            } else {
-                callback(Result.failure(createFlutterError(UniversalBleErrorCode.PAIRING_FAILED, "Failed to pair")))
-            }
-        } catch (e: Exception) {
-            pendingPairResults.remove(deviceId)
-            PrinterConnectLogger.logError("Error pairing: ${e.message}")
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, e.toString())))
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    override fun unPair(deviceId: String) {
-        val adapter = bluetoothAdapter
-        if (adapter == null) {
-            return
-        }
-
-        try {
-            val device = adapter.getRemoteDevice(deviceId)
-            if (device.isBonded()) {
-                device.removeBond()
-                PrinterConnectLogger.logInfo("Unpairing from $deviceId")
-            }
-        } catch (e: Exception) {
-            PrinterConnectLogger.logError("Error unpairing: ${e.message}")
-        }
-    }
-
     @SuppressLint("MissingPermission")
     override fun getSystemDevices(withServices: List<String>, callback: (Result<List<UniversalBleScanResult>>) -> Unit) {
         val adapter = bluetoothAdapter
@@ -1361,7 +1254,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                 UniversalBleScanResult(
                     deviceId = device.address,
                     name = device.name,
-                    isPaired = device.isBonded(),
                     rssi = null,
                     manufacturerDataList = null,
                     serviceData = null,
@@ -1379,7 +1271,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
                 UniversalBleScanResult(
                     deviceId = device.address,
                     name = device.name,
-                    isPaired = device.isBonded(),
                     rssi = null,
                     manufacturerDataList = null,
                     serviceData = null,

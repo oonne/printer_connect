@@ -3,16 +3,12 @@ import 'package:printer_connect/src/printer_connect.g.dart';
 
 /// BleDevice 扩展方法
 ///
-/// 为 BleDevice 提供便捷的设备操作方法，包括连接/断开、配对、
+/// 为 BleDevice 提供便捷的设备操作方法，包括连接/断开、
 /// 服务发现、MTU 请求、状态流监听等。
 extension BleDeviceExtension on BleDevice {
   /// 设备连接状态变化流（true 表示已连接）
   Stream<bool> get connectionStream =>
       PrinterConnect.connectionStream(deviceId);
-
-  /// 设备配对状态变化流
-  Stream<bool> get pairingStateStream =>
-      PrinterConnect.pairingStateStream(deviceId);
 
   /// 是否已连接
   Future<bool> get isConnected async =>
@@ -43,23 +39,6 @@ extension BleDeviceExtension on BleDevice {
   /// [expectedMtu] 期望的 MTU 值
   Future<int> requestMtu(int expectedMtu, {String? queueId}) =>
       PrinterConnect.requestMtu(deviceId, expectedMtu);
-
-  /// 检查设备是否已配对
-  ///
-  /// [timeout] 操作超时时间
-  Future<bool> isPaired({Duration? timeout}) {
-    return PrinterConnect.isPaired(deviceId, timeout: timeout);
-  }
-
-  /// 与设备配对
-  ///
-  /// [timeout] 操作超时时间
-  Future<void> pair({Duration? timeout}) {
-    return PrinterConnect.pair(deviceId, timeout: timeout);
-  }
-
-  /// 取消与设备的配对
-  Future<void> unpair() => PrinterConnect.unpair(deviceId);
 
   /// 发现设备的所有服务
   ///

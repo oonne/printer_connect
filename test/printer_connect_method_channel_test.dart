@@ -95,15 +95,6 @@ class _FullMock extends PrinterConnectPlatformMock {
   ) async {}
 
   @override
-  Future<bool> isPaired(String deviceId) async => false;
-
-  @override
-  Future<bool> pair(String deviceId) async => false;
-
-  @override
-  Future<void> unpair(String deviceId) async {}
-
-  @override
   Future<BleConnectionState> getConnectionState(String deviceId) async =>
       BleConnectionState.disconnected;
 
@@ -247,11 +238,6 @@ void main() {
           BleConnectionPriority.highPerformance,
         );
       }, returnsNormally);
-    });
-
-    test('isPaired returns false', () async {
-      final result = await PrinterConnect.isPaired('test-device');
-      expect(result, false);
     });
 
     test('getSystemDevices returns empty', () async {

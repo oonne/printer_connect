@@ -27,9 +27,6 @@ typedef OnScanResult = void Function(BleDevice scanResult);
 /// 蓝牙可用性变化回调：蓝牙开关状态或权限变化时触发
 typedef OnAvailabilityChange = void Function(AvailabilityState state);
 
-/// 配对状态变化回调：设备配对/取消配对时触发
-typedef OnPairingStateChange = void Function(String deviceId, bool isPaired);
-
 /// 连接参数变化回调：连接参数（如 MTU、间隔等）更新时触发
 typedef OnConnectionParametersChange =
     void Function(BleConnectionParametersUpdated update);

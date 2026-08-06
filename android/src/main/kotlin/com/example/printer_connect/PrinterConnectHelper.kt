@@ -2,7 +2,6 @@ package com.example.printer_connect
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothManager
@@ -19,7 +18,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Context.RECEIVER_EXPORTED
 import android.content.Context.RECEIVER_NOT_EXPORTED
-import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.util.SparseArray
@@ -36,12 +34,6 @@ val ccdCharacteristic: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b3
 // 使用 ConcurrentHashMap 确保并发安全，在连接/断开时进行增删操作。
 // 用于在多个操作间共享同一个 GATT 连接实例，避免重复创建连接。
 internal val knownGatts = ConcurrentHashMap<String, BluetoothGatt>()
-
-// 配对状态变更事件，封装设备和配对状态
-data class BondStateChange(
-    val device: BluetoothDevice,
-    val state: Int,
-)
 
 // 将 Android GATT 连接状态常量转换为跨平台 BleConnectionState 枚举
 fun Int.toBleConnectionState(): BleConnectionState {
@@ -82,27 +74,6 @@ fun String.findGatt(): BluetoothGatt? {
 fun BluetoothManager?.isBluetoothEnabled(): Boolean {
     return this?.adapter?.isEnabled == true
 }
-
-// 兼容获取广播中的蓝牙设备对象，适配 Android 13+ 的 API 变更
-fun Intent.getBluetoothDeviceCompat(): BluetoothDevice? {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        this.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
-    } else {
-        @Suppress("DEPRECATION")
-        this.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-    }
-}
-
-// 从广播 Intent 中解析配对状态变更信息
-fun Intent.getBondStateChange(): BondStateChange? {
-    if (action != BluetoothDevice.ACTION_BOND_STATE_CHANGED) return null
-    val device = this.getBluetoothDeviceCompat() ?: return null
-    val state = this.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
-    return BondStateChange(device, state)
-}
-
-// 判断设备是否已配对（BOND_BONDED 状态）
-fun BluetoothDevice.isBonded(): Boolean = bondState == BluetoothDevice.BOND_BONDED
 
 // 兼容注册广播接收器，适配 Android 13+ 需要指定 RECEIVER_EXPORTED/NOT_EXPORTED
 fun Context.registerReceiverCompat(
@@ -206,16 +177,6 @@ fun BluetoothGatt.getCharacteristic(
     characteristic: String,
 ): BluetoothGattCharacteristic? {
     return getService(UUID.fromString(service))?.getCharacteristic(UUID.fromString(characteristic))
-}
-
-// 通过反射调用隐藏的 removeBond 方法来取消配对
-@SuppressLint("MissingPermission")
-fun BluetoothDevice.removeBond() {
-    try {
-        javaClass.getMethod("removeBond").invoke(this)
-    } catch (e: Exception) {
-        PrinterConnectLogger.logError("Removing bond failed. ${e.message}")
-    }
 }
 
 // 解析 GATT 特征的属性位掩码（8 个属性位），转为跨平台 CharacteristicProperty 枚举列表

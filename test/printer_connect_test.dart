@@ -95,15 +95,6 @@ class _TestableMock extends PrinterConnectPlatformMock {
   ) async {}
 
   @override
-  Future<bool> isPaired(String deviceId) async => false;
-
-  @override
-  Future<bool> pair(String deviceId) async => false;
-
-  @override
-  Future<void> unpair(String deviceId) async {}
-
-  @override
   Future<BleConnectionState> getConnectionState(String deviceId) async =>
       BleConnectionState.disconnected;
 

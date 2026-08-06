@@ -236,16 +236,6 @@ class UniversalBleErrorParser {
       return UniversalBleErrorCode.mtuRequestFailed;
     }
 
-    if (lowerCode.contains('pair')) {
-      if (lowerCode.contains('fail') || lowerCode.contains('error')) {
-        return UniversalBleErrorCode.pairingFailed;
-      }
-    }
-
-    if (lowerCode.contains('unpair')) {
-      return UniversalBleErrorCode.unpairFailed;
-    }
-
     if (lowerCode.contains('security') || lowerCode.contains('encrypt')) {
       return UniversalBleErrorCode.securityError;
     }

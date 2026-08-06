@@ -141,23 +141,6 @@ class MockPrinterConnect extends PrinterConnectPlatform {
   ) async {}
 
   @override
-  Future<bool> isPaired(String deviceId) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return true;
-  }
-
-  @override
-  Future<bool> pair(String deviceId) async {
-    updatePairingState(deviceId, true);
-    return true;
-  }
-
-  @override
-  Future<void> unpair(String deviceId) async {
-    updatePairingState(deviceId, false);
-  }
-
-  @override
   Future<BleConnectionState> getConnectionState(String deviceId) async {
     return BleConnectionState.disconnected;
   }

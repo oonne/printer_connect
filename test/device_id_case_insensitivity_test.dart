@@ -53,33 +53,12 @@ void main() {
   );
 
   test(
-    'pairingStateStream matches a device id reported in a different case',
-    () async {
-      final platform = _MockPlatform();
-      final event = platform.pairingStateStream(upper).first;
-      platform.updatePairingState(lower, true);
-      expect(await event, isTrue);
-    },
-  );
-
-  test(
     'connect() completes when the platform reports the id in a different case',
     () async {
       PrinterConnect.setInstance(_MockPlatform());
       await PrinterConnect.connect(upper, timeout: const Duration(seconds: 2));
     },
   );
-
-  test('pairing-state dedup treats the two cases as one device', () async {
-    final platform = _MockPlatform();
-    final events = <bool>[];
-    final sub = platform.pairingStateStream(upper).listen(events.add);
-    platform.updatePairingState(lower, true);
-    platform.updatePairingState(upper, true);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    await sub.cancel();
-    expect(events, [true]);
-  });
 
   test(
     'connection-parameters dedup treats the two cases as one device',

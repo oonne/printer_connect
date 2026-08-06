@@ -25,7 +25,7 @@ import 'package:printer_connect/src/utils/universal_logger.dart';
 /// 平台接口抽象类，定义了 BLE 操作的跨平台 API
 ///
 /// 采用 Stream 架构实现事件驱动通信：
-/// - 通过 [UniversalBleStreamController] 管理各类事件流（扫描、连接、特征值、配对等）
+/// - 通过 [UniversalBleStreamController] 管理各类事件流（扫描、连接、特征值等）
 /// - 同时提供传统的回调函数（[OnScanResult]、[OnConnectionChange] 等）作为兼容接口
 /// - 子类（如 PigeonPrinterConnectPlatform）通过原生回调接收事件并分发到 Stream 和回调
 abstract class PrinterConnectPlatform extends PlatformInterface {
@@ -47,10 +47,8 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   OnConnectionChange? onConnectionChange;
   OnValueChange? onValueChange;
   OnAvailabilityChange? onAvailabilityChange;
-  OnPairingStateChange? onPairingStateChange;
   OnConnectionParametersChange? onConnectionParametersChange;
 
-  final Map<String, bool> _pairStateMap = {};
   final Map<String, BleConnectionParametersUpdated>
   _lastConnectionParametersMap = {};
 
@@ -64,8 +62,6 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
       UniversalBleStreamController<
         ({String deviceId, String characteristicId, Uint8List value})
       >();
-  final _pairStateStreamController =
-      UniversalBleStreamController<({String deviceId, bool isPaired})>();
 
   /// 订阅时立即发送最新的蓝牙可用性状态
   late final _availabilityStreamController =
@@ -83,7 +79,7 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
   /// 各平台报告的大小写也不一致：Android 返回大写 MAC，Windows/WinRT 返回小写 MAC。
   /// 因此我们采用以下策略：
   /// 1. 事件流过滤时同时匹配原始大小写和小写化后的 ID
-  /// 2. 所有设备状态以小写化的规范化 ID 作为 Map 的键（见 updatePairingState /
+  /// 2. 所有设备状态以小写化的规范化 ID 作为 Map 的键（见
   /// updateConnectionParameters / CacheHandler），确保同一设备的不同大小写报告不会产生重复条目
   /// 3. 输出的设备ID保持平台原始大小写，保证向后兼容
   /// 4. 快速路径：优先尝试精确匹配，仅在不匹配时再进行小写化比较
@@ -109,15 +105,6 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
               e.characteristicId == characteristicId;
         })
         .map((e) => e.value);
-  }
-
-  Stream<bool> pairingStateStream(String deviceId) {
-    final target = deviceId.toLowerCase();
-    return _pairStateStreamController.stream
-        .where(
-          (e) => e.deviceId == deviceId || e.deviceId.toLowerCase() == target,
-        )
-        .map((e) => e.isPaired);
   }
 
   /// 更新处理器：将事件推入 Stream 控制器，同时触发回调
@@ -166,18 +153,6 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
     _availabilityStreamController.add(state);
     try {
       onAvailabilityChange?.call(state);
-    } catch (_) {}
-  }
-
-  void updatePairingState(String deviceId, bool isPaired) {
-    // 使用规范化 ID 作为键，避免同一设备因不同大小写报告而创建重复条目
-    // 输出的 deviceId 保持平台原始大小写
-    final key = deviceId.toLowerCase();
-    if (_pairStateMap[key] == isPaired) return;
-    _pairStateMap[key] = isPaired;
-    _pairStateStreamController.add((deviceId: deviceId, isPaired: isPaired));
-    try {
-      onPairingStateChange?.call(deviceId, isPaired);
     } catch (_) {}
   }
 
@@ -267,12 +242,6 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
     BleConnectionPriority priority,
   );
 
-  Future<bool> isPaired(String deviceId);
-
-  Future<bool> pair(String deviceId);
-
-  Future<void> unpair(String deviceId);
-
   Future<BleConnectionState> getConnectionState(String deviceId);
 
   Future<List<BleDevice>> getSystemDevices(List<String>? withServices);
@@ -357,17 +326,11 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   }
 
   @override
-  void onPairStateChange(String deviceId, bool isPaired, String? error) {
-    updatePairingState(deviceId, isPaired);
-  }
-
-  @override
   void onScanResult(UniversalBleScanResult result) {
     final device = BleDevice(
       deviceId: result.deviceId,
       name: result.name,
       rssi: result.rssi,
-      paired: result.isPaired,
       manufacturerDataList:
           result.manufacturerDataList
               ?.map(
@@ -603,21 +566,6 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
   }
 
   @override
-  Future<bool> isPaired(String deviceId) async {
-    return _platformChannel.isPaired(deviceId);
-  }
-
-  @override
-  Future<bool> pair(String deviceId) async {
-    return _platformChannel.pair(deviceId);
-  }
-
-  @override
-  Future<void> unpair(String deviceId) async {
-    await _platformChannel.unPair(deviceId);
-  }
-
-  @override
   Future<BleConnectionState> getConnectionState(String deviceId) async {
     return _platformChannel.getConnectionState(deviceId);
   }
@@ -633,7 +581,6 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
             deviceId: d.deviceId,
             name: d.name,
             rssi: d.rssi,
-            paired: d.isPaired,
             isSystemDevice: true,
             manufacturerDataList:
                 d.manufacturerDataList

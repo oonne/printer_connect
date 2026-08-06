@@ -13,7 +13,6 @@ import 'package:pigeon/pigeon.dart';
 class UniversalBleScanResult {
   final String deviceId;
   final String? name;
-  final bool? isPaired;
   final int? rssi;
   final List<UniversalManufacturerData>? manufacturerDataList;
   final Map<String, Uint8List>? serviceData;
@@ -23,7 +22,6 @@ class UniversalBleScanResult {
   UniversalBleScanResult({
     required this.name,
     required this.deviceId,
-    required this.isPaired,
     required this.rssi,
     required this.manufacturerDataList,
     required this.serviceData,
@@ -235,11 +233,6 @@ abstract class UniversalBlePlatformChannel {
     BleOutputProperty bleOutputProperty,
   );
   @async
-  bool isPaired(String deviceId);
-  @async
-  bool pair(String deviceId);
-  void unPair(String deviceId);
-  @async
   List<UniversalBleScanResult> getSystemDevices(List<String> withServices);
   BleConnectionState getConnectionState(String deviceId);
   @async
@@ -255,7 +248,6 @@ abstract class UniversalBlePlatformChannel {
 @FlutterApi()
 abstract class UniversalBleCallbackChannel {
   void onAvailabilityChanged(AvailabilityState state);
-  void onPairStateChange(String deviceId, bool isPaired, String? error);
   void onScanResult(UniversalBleScanResult result);
   void onValueChanged(
     String deviceId,

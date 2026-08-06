@@ -15,15 +15,15 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 private object PrinterConnectPigeonUtils {
 
-  fun createConnectionError(channelName: String): FlutterException {
-    return FlutterException("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
+  fun createConnectionError(channelName: String): FlutterError {
+    return FlutterError("channel-error",  "Unable to establish connection on channel: '$channelName'.", "")  }
 
   fun wrapResult(result: Any?): List<Any?> {
     return listOf(result)
   }
 
   fun wrapError(exception: Throwable): List<Any?> {
-    return if (exception is FlutterException) {
+    return if (exception is FlutterError) {
       listOf(
         exception.code,
         exception.message,
@@ -189,7 +189,7 @@ private object PrinterConnectPigeonUtils {
  * @property message The error message.
  * @property details The error details. Must be a datatype supported by the api codec.
  */
-class FlutterException (
+class FlutterError (
   val code: String,
   override val message: String? = null,
   val details: Any? = null
@@ -343,7 +343,6 @@ enum class CharacteristicProperty(val raw: Int) {
 data class UniversalBleScanResult (
   val deviceId: String,
   val name: String? = null,
-  val isPaired: Boolean? = null,
   val rssi: Long? = null,
   val manufacturerDataList: List<UniversalManufacturerData>? = null,
   val serviceData: Map<String, ByteArray>? = null,
@@ -355,20 +354,18 @@ data class UniversalBleScanResult (
     fun fromList(pigeonVar_list: List<Any?>): UniversalBleScanResult {
       val deviceId = pigeonVar_list[0] as String
       val name = pigeonVar_list[1] as String?
-      val isPaired = pigeonVar_list[2] as Boolean?
-      val rssi = pigeonVar_list[3] as Long?
-      val manufacturerDataList = pigeonVar_list[4] as List<UniversalManufacturerData>?
-      val serviceData = pigeonVar_list[5] as Map<String, ByteArray>?
-      val services = pigeonVar_list[6] as List<String>?
-      val timestamp = pigeonVar_list[7] as Long?
-      return UniversalBleScanResult(deviceId, name, isPaired, rssi, manufacturerDataList, serviceData, services, timestamp)
+      val rssi = pigeonVar_list[2] as Long?
+      val manufacturerDataList = pigeonVar_list[3] as List<UniversalManufacturerData>?
+      val serviceData = pigeonVar_list[4] as Map<String, ByteArray>?
+      val services = pigeonVar_list[5] as List<String>?
+      val timestamp = pigeonVar_list[6] as Long?
+      return UniversalBleScanResult(deviceId, name, rssi, manufacturerDataList, serviceData, services, timestamp)
     }
   }
   fun toList(): List<Any?> {
     return listOf(
       deviceId,
       name,
-      isPaired,
       rssi,
       manufacturerDataList,
       serviceData,
@@ -384,14 +381,13 @@ data class UniversalBleScanResult (
       return true
     }
     val other = other as UniversalBleScanResult
-    return PrinterConnectPigeonUtils.deepEquals(this.deviceId, other.deviceId) && PrinterConnectPigeonUtils.deepEquals(this.name, other.name) && PrinterConnectPigeonUtils.deepEquals(this.isPaired, other.isPaired) && PrinterConnectPigeonUtils.deepEquals(this.rssi, other.rssi) && PrinterConnectPigeonUtils.deepEquals(this.manufacturerDataList, other.manufacturerDataList) && PrinterConnectPigeonUtils.deepEquals(this.serviceData, other.serviceData) && PrinterConnectPigeonUtils.deepEquals(this.services, other.services) && PrinterConnectPigeonUtils.deepEquals(this.timestamp, other.timestamp)
+    return PrinterConnectPigeonUtils.deepEquals(this.deviceId, other.deviceId) && PrinterConnectPigeonUtils.deepEquals(this.name, other.name) && PrinterConnectPigeonUtils.deepEquals(this.rssi, other.rssi) && PrinterConnectPigeonUtils.deepEquals(this.manufacturerDataList, other.manufacturerDataList) && PrinterConnectPigeonUtils.deepEquals(this.serviceData, other.serviceData) && PrinterConnectPigeonUtils.deepEquals(this.services, other.services) && PrinterConnectPigeonUtils.deepEquals(this.timestamp, other.timestamp)
   }
 
   override fun hashCode(): Int {
     var result = javaClass.hashCode()
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.deviceId)
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.name)
-    result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.isPaired)
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.rssi)
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.manufacturerDataList)
     result = 31 * result + PrinterConnectPigeonUtils.deepHash(this.serviceData)
@@ -1092,9 +1088,6 @@ interface UniversalBlePlatformChannel {
   fun readValue(deviceId: String, service: String, characteristic: String, callback: (Result<ByteArray>) -> Unit)
   fun requestMtu(deviceId: String, expectedMtu: Long, callback: (Result<Long>) -> Unit)
   fun writeValue(deviceId: String, service: String, characteristic: String, value: ByteArray, bleOutputProperty: BleOutputProperty, callback: (Result<Unit>) -> Unit)
-  fun isPaired(deviceId: String, callback: (Result<Boolean>) -> Unit)
-  fun pair(deviceId: String, callback: (Result<Boolean>) -> Unit)
-  fun unPair(deviceId: String)
   fun getSystemDevices(withServices: List<String>, callback: (Result<List<UniversalBleScanResult>>) -> Unit)
   fun getConnectionState(deviceId: String): BleConnectionState
   fun readRssi(deviceId: String, callback: (Result<Long>) -> Unit)
@@ -1398,64 +1391,6 @@ interface UniversalBlePlatformChannel {
         }
       }
       run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.isPaired$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { message, reply ->
-            val args = message as List<Any?>
-            val deviceIdArg = args[0] as String
-            api.isPaired(deviceIdArg) { result: Result<Boolean> ->
-              val error = result.exceptionOrNull()
-              if (error != null) {
-                reply.reply(PrinterConnectPigeonUtils.wrapError(error))
-              } else {
-                val data = result.getOrNull()
-                reply.reply(PrinterConnectPigeonUtils.wrapResult(data))
-              }
-            }
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.pair$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { message, reply ->
-            val args = message as List<Any?>
-            val deviceIdArg = args[0] as String
-            api.pair(deviceIdArg) { result: Result<Boolean> ->
-              val error = result.exceptionOrNull()
-              if (error != null) {
-                reply.reply(PrinterConnectPigeonUtils.wrapError(error))
-              } else {
-                val data = result.getOrNull()
-                reply.reply(PrinterConnectPigeonUtils.wrapResult(data))
-              }
-            }
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.unPair$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { message, reply ->
-            val args = message as List<Any?>
-            val deviceIdArg = args[0] as String
-            val wrapped: List<Any?> = try {
-              api.unPair(deviceIdArg)
-              listOf(null)
-            } catch (exception: Throwable) {
-              PrinterConnectPigeonUtils.wrapError(exception)
-            }
-            reply.reply(wrapped)
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.getSystemDevices$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { message, reply ->
@@ -1569,24 +1504,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(stateArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
-        } else {
-          callback(Result.success(Unit))
-        }
-      } else {
-        callback(Result.failure(PrinterConnectPigeonUtils.createConnectionError(channelName)))
-      } 
-    }
-  }
-  fun onPairStateChange(deviceIdArg: String, isPairedArg: Boolean, errorArg: String?, callback: (Result<Unit>) -> Unit)
-{
-    val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
-    val channelName = "dev.flutter.pigeon.printer_connect.UniversalBleCallbackChannel.onPairStateChange$separatedMessageChannelSuffix"
-    val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
-    channel.send(listOf(deviceIdArg, isPairedArg, errorArg)) {
-      if (it is List<*>) {
-        if (it.size > 1) {
-          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1603,7 +1521,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(resultArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1620,7 +1538,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(deviceIdArg, characteristicIdArg, valueArg, timestampArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1637,7 +1555,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(deviceIdArg, connectedArg, errorArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }
@@ -1654,7 +1572,7 @@ class UniversalBleCallbackChannel(private val binaryMessenger: BinaryMessenger, 
     channel.send(listOf(updateArg)) {
       if (it is List<*>) {
         if (it.size > 1) {
-          callback(Result.failure(FlutterException(it[0] as String, it[1] as String, it[2] as String?)))
+          callback(Result.failure(FlutterError(it[0] as String, it[1] as String, it[2] as String?)))
         } else {
           callback(Result.success(Unit))
         }

@@ -62,10 +62,6 @@ class PrinterConnect {
     String characteristicId,
   ) => _platform.characteristicValueStream(deviceId, characteristicId);
 
-  /// 配对状态流
-  static Stream<bool> pairingStateStream(String deviceId) =>
-      _platform.pairingStateStream(deviceId);
-
   /// 获取蓝牙可用性状态
   /// 如需接收状态更新，请设置 [onAvailabilityChange] 监听器
   static Future<AvailabilityState> getBluetoothAvailabilityState({
@@ -418,65 +414,6 @@ class PrinterConnect {
       () => _platform.readRssi(deviceId),
       timeout: timeout,
       deviceId: deviceId,
-      queueId: queueId,
-    );
-  }
-
-  /// 检查设备是否已配对
-  static Future<bool> isPaired(
-    String deviceId, {
-    Duration? timeout,
-    String? queueId,
-  }) async {
-    if (BleCapabilities.hasSystemPairingApi) {
-      return _bleCommandQueue.queueCommand(
-        () => _platform.isPaired(deviceId),
-        deviceId: deviceId,
-        timeout: timeout,
-        queueId: queueId,
-      );
-    }
-    return false;
-  }
-
-  /// 配对设备
-  static Future<bool> pair(
-    String deviceId, {
-    Duration? timeout,
-    String? queueId,
-  }) async {
-    if (BleCapabilities.hasSystemPairingApi) {
-      final paired = await _bleCommandQueue.queueCommand(
-        () => _platform.pair(deviceId),
-        deviceId: deviceId,
-        timeout: timeout,
-        queueId: queueId,
-      );
-      if (!paired) {
-        throw exceptions.PairingException(
-          'Failed to pair device',
-          code: 'pairing_failed',
-        );
-      }
-      return paired;
-    }
-    // iOS 不支持系统配对 API
-    throw exceptions.PairingException(
-      'Pairing is not supported on this platform',
-      code: 'not_supported',
-    );
-  }
-
-  /// 取消配对设备
-  static Future<void> unpair(
-    String deviceId, {
-    Duration? timeout,
-    String? queueId,
-  }) async {
-    return _bleCommandQueue.queueCommand(
-      () => _platform.unpair(deviceId),
-      deviceId: deviceId,
-      timeout: timeout,
       queueId: queueId,
     );
   }

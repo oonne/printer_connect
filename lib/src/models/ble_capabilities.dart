@@ -3,26 +3,8 @@ import 'package:flutter/foundation.dart';
 /// 蓝牙能力封装类
 ///
 /// 提供各平台蓝牙功能支持情况的静态查询接口，
-/// 包括配对方式、系统 API、权限要求、蓝牙开关、已连接设备等。
+/// 包括系统 API、权限要求、蓝牙开关、已连接设备等。
 class BleCapabilities {
-  /// 是否支持所有配对方式（API 配对或加密特征触发配对）
-  ///
-  /// 支持 Just Works、数字比较或密码输入等任意配对方式。
-  static final bool supportsAllPairingKinds =
-      triggersConfirmOnlyPairing || hasSystemPairingApi;
-
-  /// 平台是否在读写加密特征时触发"仅确认"配对（即 Just Works 或传统配对）
-  static final triggersConfirmOnlyPairing =
-      defaultTargetPlatform != TargetPlatform.windows &&
-      defaultTargetPlatform != TargetPlatform.linux;
-
-  /// 平台是否支持 pair()/unpair() 系统配对 API
-  static bool hasSystemPairingApi =
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.windows ||
-          defaultTargetPlatform == TargetPlatform.linux);
-
   /// 是否需要运行时权限（Web、Windows、Linux 无需运行时权限）
   static bool requiresRuntimePermission =
       !_Platform.isWeb && !_Platform.isWindows && !_Platform.isLinux;

@@ -16,7 +16,6 @@
 - [连接](#连接)
 - [发现服务](#发现服务)
 - [读取与写入数据](#读取与写入数据)
-- [配对](#配对)
 - [蓝牙可用性](#蓝牙可用性)
 - [请求 MTU](#请求-mtu)
 - [读取 RSSI](#读取-rssi)
@@ -37,10 +36,6 @@
 | [读取数据](#读取与写入数据) | read | ✔️ | ✔️ |
 | [写入数据](#读取与写入数据) | write | ✔️ | ✔️ |
 | [订阅通知/指示](#订阅) | subscriptions | ✔️ | ✔️ |
-| [触发配对](#触发配对) | pair | ✔️ | ⏺ |
-| [取消配对](#取消配对) | unpair | ✔️ | ❌ |
-| [检查配对状态](#检查配对状态) | isPaired | ✔️ | ✔️ |
-| [配对状态流](#配对状态变化) | pairingStateStream | ✔️ | ⏺ |
 | [获取蓝牙状态](#蓝牙可用性) | getBluetoothAvailabilityState | ✔️ | ✔️ |
 | [启用/禁用蓝牙](#蓝牙可用性) | enable/disable Bluetooth | ✔️ | ❌ |
 | [蓝牙状态流](#蓝牙可用性) | availabilityStream | ✔️ | ✔️ |
@@ -49,8 +44,6 @@
 | [连接参数变化回调](#请求连接优先级) | onConnectionParametersChange | ✔️ | ❌ |
 | [读取信号强度](#读取-rssi) | readRssi | ✔️ | ✔️ |
 | [请求权限](#手动请求权限) | requestPermissions | ✔️ | ✔️ |
-
-⏺ = 部分支持（见下方说明）
 
 ## 快速开始
 
@@ -322,46 +315,6 @@ await characteristic.indications.subscribe();
 await characteristic.unsubscribe();
 ```
 
-### 配对
-
-#### 触发配对
-
-##### 在 Android 上配对
-
-```dart
-await bleDevice.pair();
-```
-
-##### 在 iOS 上配对
-
-对于 iOS，配对支持取决于设备。当你尝试从加密特征读取/写入时，操作系统会自动触发配对。`pair()` 方法仅在设备具有加密读取特征时才会触发配对。
-
-配对后，你可以检查配对状态。
-
-#### 配对状态
-
-##### 检查配对状态
-
-```dart
-// 检查当前配对状态
-bool isPaired = await bleDevice.isPaired();
-```
-
-#### 配对状态变化
-
-```dart
-// 使用流获取配对状态更新
-bleDevice.pairingStateStream.listen((bool paired) {
-  // 处理配对状态变化
-});
-```
-
-#### 取消配对
-
-```dart
-bleDevice.unpair();
-```
-
 ### 蓝牙可用性
 
 ```dart
@@ -446,7 +399,6 @@ Printer Connect 提供了跨平台统一且类型安全的错误处理系统。�
 
 - **`PrinterConnectException`**：所有 BLE 错误的基异常类
 - **`ConnectionException`**：针对连接相关错误抛出
-- **`PairingException`**：针对配对相关错误抛出
 - **`WriteException`**：针对写入相关错误抛出
 - **`ReadException`**：针对读取相关错误抛出
 - **`ScanException`**：针对扫描相关错误抛出
@@ -461,7 +413,6 @@ Printer Connect 提供了跨平台统一且类型安全的错误处理系统。�
 所有错误都使用字符串错误代码进行分类，包括：
 
 - 连接错误（超时、失败、被拒绝等）
-- 配对错误（失败、取消、不允许等）
 - 操作错误（不支持、超时、取消等）
 - 权限错误（不允许、未授权、访问被拒绝等）
 - 设备错误（未找到、已断开连接等）
@@ -545,7 +496,7 @@ BleUuidParser.compareStrings("180a","0000180A-0000-1000-8000-00805F9B34FB"); // 
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
 ```
 
-- 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → 配对 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
+- 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
 - 权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
 
 #### Android 位置权限

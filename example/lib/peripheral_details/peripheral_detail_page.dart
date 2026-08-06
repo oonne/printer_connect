@@ -29,7 +29,6 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   final binaryCode = TextEditingController();
 
   StreamSubscription? connectionStreamSubscription;
-  StreamSubscription? pairingStateSubscription;
   StreamSubscription<Uint8List>? _valueSubscription;
   BleService? selectedService;
   BleCharacteristic? selectedCharacteristic;
@@ -40,9 +39,6 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
 
     connectionStreamSubscription = bleDevice.connectionStream.listen(
       _handleConnectionChange,
-    );
-    pairingStateSubscription = bleDevice.pairingStateStream.listen(
-      _handlePairingStateChange,
     );
     PrinterConnectPlatform.instance.onConnectionParametersChange =
         _handleConnectionParametersChange;
@@ -63,7 +59,6 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   void dispose() {
     super.dispose();
     connectionStreamSubscription?.cancel();
-    pairingStateSubscription?.cancel();
     _valueSubscription?.cancel();
     PrinterConnectPlatform.instance.onConnectionParametersChange = null;
   }
@@ -90,11 +85,6 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     String data = '$s\nraw :  ${value.toString()}';
     debugPrint('_handleValueChange $s');
     _addLog("数值", data);
-  }
-
-  void _handlePairingStateChange(bool isPaired) {
-    debugPrint('isPaired $isPaired');
-    _addLog("配对状态变更 - 是否已配对", isPaired);
   }
 
   void _handleConnectionParametersChange(
@@ -425,31 +415,6 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                             ]),
                         onPressed: _unsubscribeChar,
                         text: '取消订阅',
-                      ),
-                      PlatformButton(
-                        enabled: BleCapabilities.supportsAllPairingKinds,
-                        onPressed: () async {
-                          try {
-                            await bleDevice.pair();
-                            _addLog("配对结果", true);
-                          } catch (e) {
-                            _addLog('配对错误 (${e.runtimeType})', e);
-                          }
-                        },
-                        text: '配对',
-                      ),
-                      PlatformButton(
-                        onPressed: () async {
-                          bool? isPaired = await bleDevice.isPaired();
-                          _addLog('是否已配对', isPaired);
-                        },
-                        text: '是否已配对',
-                      ),
-                      PlatformButton(
-                        onPressed: () async {
-                          await bleDevice.unpair();
-                        },
-                        text: '取消配对',
                       ),
                     ],
                   ),

@@ -30,12 +30,6 @@ class ScannedItemWidget extends StatelessWidget {
               ),
               if (bleDevice.timestampDateTime != null)
                 Text("最后发现: ${bleDevice.timestampDateTime}"),
-              bleDevice.paired == true
-                  ? const Text("已配对", style: TextStyle(color: Colors.green))
-                  : const Text(
-                      "未配对",
-                      style: TextStyle(color: Colors.red),
-                    ),
             ],
           ),
           trailing: const Icon(Icons.arrow_forward_ios),
