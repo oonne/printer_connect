@@ -1,0 +1,52 @@
+name: Publish to pub.dev on version bump
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pubspec.yaml'
+
+jobs:
+  publish:
+    environment: pub-dev   # 若勾选了 "Require GitHub Actions environment"，必须加此行
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Detect version change
+        id: version
+        run: |
+          set -e
+          NEW_VERSION=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
+          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+            OLD_VERSION=$(git show HEAD~1:pubspec.yaml 2>/dev/null \
+                          | grep -E '^version:' | head -1 | awk '{print $2}' || echo "")
+          else
+            OLD_VERSION=""
+          fi
+          echo "old=$OLD_VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$NEW_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Version changed: '$OLD_VERSION' -> '$NEW_VERSION'"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Version unchanged ($NEW_VERSION), skip publishing."
+          fi
+
+      - name: Dry-run check
+        if: steps.version.outputs.changed == 'true'
+        run: dart pub publish --dry-run
+
+      - name: Publish
+        if: steps.version.outputs.changed == 'true'
+        run: dart pub publish --force
