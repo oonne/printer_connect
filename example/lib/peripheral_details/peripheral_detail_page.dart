@@ -32,6 +32,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
   StreamSubscription<Uint8List>? _valueSubscription;
   BleService? selectedService;
   BleCharacteristic? selectedCharacteristic;
+  PrinterServiceInfo? printerServiceInfo;
 
   @override
   void initState() {
@@ -210,6 +211,25 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
   }
 
+  Future<void> _initPrinterService() async {
+    try {
+      final info = await PrinterServiceFinder.initDevice(
+        deviceId: bleDevice.deviceId,
+        name: bleDevice.name ?? '',
+      );
+      setState(() {
+        printerServiceInfo = info;
+      });
+      _addLog('获取打印服务',
+          '成功 - service: ${info.service}, characteristic: ${info.characteristic}');
+    } catch (e) {
+      setState(() {
+        printerServiceInfo = null;
+      });
+      _addLog('获取打印服务错误 (${e.runtimeType})', e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -339,6 +359,11 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                         text: '发现服务',
                       ),
                       PlatformButton(
+                        onPressed: _initPrinterService,
+                        enabled: isConnected,
+                        text: '获取打印服务',
+                      ),
+                      PlatformButton(
                         onPressed: () async {
                           _addLog(
                             '连接状态',
@@ -419,6 +444,76 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                     ],
                   ),
                 ),
+                if (printerServiceInfo != null)
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Card(
+                      color: Colors.green.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.print, color: Colors.green),
+                                SizedBox(width: 8),
+                                Text(
+                                  "打印服务信息",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.label_outline),
+                              title: const Text("设备名称"),
+                              subtitle: SelectableText(
+                                printerServiceInfo!.name,
+                              ),
+                            ),
+                            ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.devices),
+                              title: const Text("设备 ID"),
+                              subtitle: SelectableText(
+                                printerServiceInfo!.deviceId,
+                              ),
+                            ),
+                            const Divider(),
+                            ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.memory),
+                              title: const Text("服务 UUID"),
+                              subtitle: SelectableText(
+                                printerServiceInfo!.service,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.album),
+                              title: const Text("特征值 UUID"),
+                              subtitle: SelectableText(
+                                printerServiceInfo!.characteristic,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ServicesListWidget(
                   discoveredServices: discoveredServices,
                   onTap: _onCharacteristicSelected,
