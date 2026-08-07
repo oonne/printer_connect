@@ -109,7 +109,7 @@ PrinterConnect.startScan(
 | [发现服务](#发现服务)       | discoverServices   |   ✔️    | ✔️  |
 | [读取数据](#读取与写入数据) | read               |   ✔️    | ✔️  |
 | [写入数据](#读取与写入数据) | write              |   ✔️    | ✔️  |
-| [订阅通知/指示](#订阅)      | subscriptions      |   ✔️    | ✔️  |
+| [订阅通知](#订阅)      | subscriptions      |   ✔️    | ✔️  |
 
 ### 二、高级API
 
