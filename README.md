@@ -90,13 +90,14 @@ await Printer.connect(deviceId);
 
 ### 一、基础API
 
-| 功能                        | 方法               | Android | iOS |
-| :-------------------------- | :----------------- | :-----: | :-: |
-| [扫描](#扫描)               | startScan/stopScan |   ✔️    | ✔️  |
-| [系统设备](#系统设备)       | getSystemDevices   |   ✔️    | ✔️  |
-| [连接/断开](#连接)          | connect/disconnect |   ✔️    | ✔️  |
-| [写入数据](#读取与写入数据) | write              |   ✔️    | ✔️  |
-| [订阅通知](#订阅)           | subscriptions      |   ✔️    | ✔️  |
+| 功能                        | 方法                              | Android | iOS |
+| :-------------------------- | :-------------------------------- | :-----: | :-: |
+| [扫描](#扫描)               | startScan/stopScan                |   ✔️    | ✔️  |
+| [系统设备](#系统设备)       | getSystemDevices                  |   ✔️    | ✔️  |
+| [连接/断开](#连接)          | connect/disconnect                |   ✔️    | ✔️  |
+| [获取打印服务](#获取打印服务) | PrinterServiceFinder.initDevice |   ✔️    | ✔️  |
+| [写入数据](#读取与写入数据) | write                             |   ✔️    | ✔️  |
+| [订阅通知](#订阅)           | subscriptions                     |   ✔️    | ✔️  |
 
 ### 二、高级API
 
@@ -305,6 +306,36 @@ BleCharacteristic characteristic = await bleDevice.getCharacteristic('180a','2a5
 ```dart
 BleCharacteristic characteristic = await service.getCharacteristic('2a56');
 ```
+
+### 获取打印服务
+
+不同厂商的打印机使用不同的标准方式来获取可用的 service 和 characteristic。`PrinterServiceFinder.initDevice` 封装了这一过程：通过蓝牙名判断设备厂商，自动连接设备并按各厂商规则获取打印所需的 service 和 characteristic。
+
+#### 用法
+
+```dart
+// 输入 deviceId 和 name，自动连接设备并获取打印所需的 service 和 characteristic
+PrinterServiceInfo info = await PrinterServiceFinder.initDevice(
+  deviceId: device.deviceId,
+  name: device.name ?? '',
+);
+
+// 返回的对象包含 deviceId、name、service、characteristic
+print('deviceId: ${info.deviceId}');
+print('name: ${info.name}');
+print('service: ${info.service}');
+print('characteristic: ${info.characteristic}');
+
+// 后续可直接使用返回的 service 和 characteristic 进行写入
+await PrinterConnect.write(
+  info.deviceId,
+  info.service,
+  info.characteristic,
+  Uint8List.fromList([0x01, 0x02, 0x03]),
+);
+```
+
+> **提示**：`initDevice` 内部会自动调用 `connect`（含权限和蓝牙状态检查），无需手动连接。每次调用都会重新连接设备并获取最新的 service 和 characteristic。
 
 ## 读取与写入数据
 

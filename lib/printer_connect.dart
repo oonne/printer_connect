@@ -1,4 +1,5 @@
 export 'src/printer_connect.dart';
+export 'src/printer_service_finder.dart';
 export 'src/interfaces/printer_connect_platform_interface.dart';
 export 'src/printer_connect_exceptions.dart';
 export 'src/models/model_exports.dart';
