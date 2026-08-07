@@ -309,7 +309,7 @@ BleCharacteristic characteristic = await service.getCharacteristic('2a56');
 
 ### 获取打印服务
 
-不同厂商的打印机使用不同的标准方式来获取可用的 service 和 characteristic。`PrinterServiceFinder.initDevice` 封装了这一过程：通过蓝牙名判断设备厂商，自动连接设备并按各厂商规则获取打印所需的 service 和 characteristic。
+不同厂商的打印机使用不同的标准方式来获取可用的 service 和 characteristic。`PrinterServiceFinder.initDevice` 封装了这一过程：通过蓝牙名判断设备厂商，自动连接设备并按各厂商规则获取打印所需的 service 和 characteristic。同时返回该设备使用的标签指令类型 `labelCodeType`（`CPCL`或`TSPL`），在标签打印场景中可以选择对应的指令集。
 
 #### 用法
 
@@ -320,11 +320,12 @@ PrinterServiceInfo info = await PrinterServiceFinder.initDevice(
   name: device.name ?? '',
 );
 
-// 返回的对象包含 deviceId、name、service、characteristic
+// 返回的对象包含 deviceId、name、service、characteristic、labelCodeType
 print('deviceId: ${info.deviceId}');
 print('name: ${info.name}');
 print('service: ${info.service}');
 print('characteristic: ${info.characteristic}');
+print('labelCodeType: ${info.labelCodeType}'); // CPCL 或 TSPL
 
 // 后续可直接使用返回的 service 和 characteristic 进行写入
 await PrinterConnect.write(

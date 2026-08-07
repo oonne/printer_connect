@@ -221,7 +221,7 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
         printerServiceInfo = info;
       });
       _addLog('获取打印服务',
-          '成功 - service: ${info.service}, characteristic: ${info.characteristic}');
+          '成功 - service: ${info.service}, characteristic: ${info.characteristic}, labelCodeType: ${info.labelCodeType}');
     } catch (e) {
       setState(() {
         printerServiceInfo = null;
@@ -539,6 +539,14 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                                   fontFamily: 'monospace',
                                   fontSize: 12,
                                 ),
+                              ),
+                            ),
+                            ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.description_outlined),
+                              title: const Text("标签指令类型"),
+                              subtitle: SelectableText(
+                                printerServiceInfo!.labelCodeType,
                               ),
                             ),
                           ],

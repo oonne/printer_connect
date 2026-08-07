@@ -16,17 +16,23 @@ class PrinterServiceInfo {
   /// 特征 UUID（小写 128 位格式）
   final String characteristic;
 
+  /// 标签指令类型（`CPCL`或`TSPL`）
+  /// 调用方可据此选择对应指令集组装打印数据。
+  final String labelCodeType;
+
   PrinterServiceInfo({
     required this.deviceId,
     required this.name,
     required this.service,
     required this.characteristic,
+    required this.labelCodeType,
   });
 
   @override
   String toString() =>
       'PrinterServiceInfo(deviceId: $deviceId, name: $name, '
-      'service: $service, characteristic: $characteristic)';
+      'service: $service, characteristic: $characteristic, '
+      'labelCodeType: $labelCodeType)';
 }
 
 /// 打印机服务查找器
@@ -46,7 +52,8 @@ class PrinterServiceFinder {
   /// 输入 [deviceId] 和 [name]，先连接设备，
   /// 然后根据蓝牙名判断厂商，按照各厂商的标准方式获取打印所需的 service 和 characteristic。
   ///
-  /// 返回 [PrinterServiceInfo]，其中包含 deviceId、name、service、characteristic。
+  /// 返回 [PrinterServiceInfo]，其中包含 deviceId、name、service、characteristic、
+  /// labelCodeType（芝柯打印机为 `CPCL`，其余为 `TSPL`）。
   ///
   /// 可能抛出：
   /// - [ConnectionException]：连接失败
@@ -61,22 +68,26 @@ class PrinterServiceFinder {
     // 2. 根据蓝牙名判断厂商，获取 service 和 characteristic
     late String service;
     late String characteristic;
+    late String labelCodeType;
 
     if (_isPt(name)) {
       // 普贴打印机
       final result = await _getPt(deviceId);
       service = result.service;
       characteristic = result.characteristic;
+      labelCodeType = 'TSPL';
     } else if (_isZicox(name)) {
       // 芝柯打印机
       final result = await _getZicox(deviceId);
       service = result.service;
       characteristic = result.characteristic;
+      labelCodeType = 'CPCL';
     } else {
       // 其他通用打印机
       final result = await _getUniversal(deviceId);
       service = result.service;
       characteristic = result.characteristic;
+      labelCodeType = 'TSPL';
     }
 
     return PrinterServiceInfo(
@@ -84,6 +95,7 @@ class PrinterServiceFinder {
       name: name,
       service: service,
       characteristic: characteristic,
+      labelCodeType: labelCodeType,
     );
   }
 
