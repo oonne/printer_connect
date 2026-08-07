@@ -110,7 +110,7 @@ PrinterConnect.startScan(
 | [写入数据](#读取与写入数据) | write | ✔️ | ✔️ |
 | [订阅通知/指示](#订阅) | subscriptions | ✔️ | ✔️ |
 | [获取蓝牙状态](#蓝牙可用性) | getBluetoothAvailabilityState | ✔️ | ✔️ |
-| [启用/禁用蓝牙](#蓝牙可用性) | enable/disable Bluetooth | ✔️ | ❌ |
+| [启用蓝牙](#蓝牙可用性) | enable Bluetooth | ✔️ | ❌ |
 | [蓝牙状态流](#蓝牙可用性) | availabilityStream | ✔️ | ✔️ |
 | [请求MTU](#请求-mtu) | requestMtu | ✔️ | ✔️ |
 | [请求连接优先级](#请求连接优先级) | requestConnectionPriority | ✔️ | ❌ |
@@ -381,9 +381,6 @@ PrinterConnect.availabilityStream.listen((state) {
 
 // 以编程方式启用蓝牙（仅限 Android）
 await PrinterConnect.enableBluetooth();
-
-// 以编程方式禁用蓝牙（仅限 Android）
-await PrinterConnect.disableBluetooth();
 ```
 
 ### 请求 MTU

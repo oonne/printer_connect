@@ -17,9 +17,6 @@ class _TestableMock extends PrinterConnectPlatformMock {
   Future<bool> enableBluetooth() async => true;
 
   @override
-  Future<bool> disableBluetooth() async => true;
-
-  @override
   Future<bool> hasPermissions({bool withAndroidFineLocation = false}) async =>
       true;
 

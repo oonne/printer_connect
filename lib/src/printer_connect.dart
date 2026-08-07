@@ -456,18 +456,6 @@ class PrinterConnect {
     );
   }
 
-  /// 禁用蓝牙（仅 Android 平台）
-  static Future<bool> disableBluetooth({
-    Duration? timeout,
-    String? queueId,
-  }) async {
-    return await _bleCommandQueue.queueCommand(
-      () => _platform.disableBluetooth(),
-      timeout: timeout,
-      queueId: queueId,
-    );
-  }
-
   /// 清空指定队列
   /// 使用 [BleCommandQueue.globalQueueId] 清空全局队列
   /// 要清空特定设备的队列，请使用 `deviceId` 作为 [id]

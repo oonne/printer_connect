@@ -15,11 +15,6 @@ abstract class PrinterConnectPlatformMock extends PrinterConnectPlatform {
   }
 
   @override
-  Future<bool> disableBluetooth() {
-    throw UnimplementedError();
-  }
-
-  @override
   Future<void> disconnect(String deviceId) {
     throw UnimplementedError();
   }

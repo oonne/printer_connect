@@ -181,10 +181,6 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         completion(.failure(createFlutterError(code: .notSupported)))
     }
 
-    func disableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void) {
-        completion(.failure(createFlutterError(code: .notSupported)))
-    }
-
     func startScan(filter: UniversalScanFilter?, config _: UniversalScanConfig?) throws {
         let usesCustomFilters = filter?.usesCustomFilters ?? false
 

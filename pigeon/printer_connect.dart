@@ -197,8 +197,6 @@ abstract class UniversalBlePlatformChannel {
   void requestPermissions(bool withAndroidFineLocation);
   @async
   bool enableBluetooth();
-  @async
-  bool disableBluetooth();
   void startScan(UniversalScanFilter? filter, UniversalScanConfig? config);
   void stopScan();
   bool isScanning();

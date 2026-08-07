@@ -16,9 +16,6 @@ class _FullMock extends PrinterConnectPlatformMock {
   Future<bool> enableBluetooth() async => true;
 
   @override
-  Future<bool> disableBluetooth() async => true;
-
-  @override
   Future<bool> hasPermissions({bool withAndroidFineLocation = false}) async =>
       true;
 
@@ -145,11 +142,6 @@ void main() {
       expect(result, true);
     });
 
-    test('disableBluetooth', () async {
-      final result = await PrinterConnect.disableBluetooth();
-      expect(result, true);
-    });
-
     test('hasPermissions', () async {
       final result = await PrinterConnect.hasPermissions();
       expect(result, true);
@@ -252,9 +244,9 @@ void main() {
   });
 
   // 回归测试：PigeonPrinterConnectPlatform 必须把原生返回值透传给调用方。
-  // 修复前 enableBluetooth/disableBluetooth 丢弃原生返回值并恒为 true，
-  // 导致用户拒绝开启蓝牙时仍得到 true、关闭蓝牙失败时也无任何反馈。
-  group('enable/disableBluetooth propagate platform result', () {
+  // 修复前 enableBluetooth 丢弃原生返回值并恒为 true，
+  // 导致用户拒绝开启蓝牙时仍得到 true。
+  group('enableBluetooth propagates platform result', () {
     test('PigeonPrinterConnectPlatform forwards native bool (false)', () async {
       // supportsBluetoothEnableApi 在 iOS/macOS 上为 false 会直接抛异常，
       // 这里覆盖为 Android 以走通 PigeonPrinterConnectPlatform 的逻辑。
@@ -267,24 +259,19 @@ void main() {
             TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
         const codec = UniversalBlePlatformChannel.pigeonChannelCodec;
 
-        // Pigeon 成功响应格式为 [result]；返回 false 表示“未开启/未关闭”。
+        // Pigeon 成功响应格式为 [result]；返回 false 表示“未开启”。
         Future<ByteData?> replyFalse(ByteData? message) async =>
             codec.encodeMessage(<Object?>[false]);
 
         const enableChannel =
             'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.enableBluetooth';
-        const disableChannel =
-            'dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.disableBluetooth';
 
         messenger.setMockMessageHandler(enableChannel, replyFalse);
-        messenger.setMockMessageHandler(disableChannel, replyFalse);
 
         // 修复前：恒为 true（丢弃原生返回值）；修复后：透传原生 false。
         expect(await platform.enableBluetooth(), false);
-        expect(await platform.disableBluetooth(), false);
 
         messenger.setMockMessageHandler(enableChannel, null);
-        messenger.setMockMessageHandler(disableChannel, null);
       } finally {
         debugDefaultTargetPlatformOverride = previous;
       }

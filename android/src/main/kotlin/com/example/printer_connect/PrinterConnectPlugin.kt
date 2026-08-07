@@ -656,41 +656,6 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         act.startActivityForResult(enableIntent, ENABLE_BLUETOOTH_REQUEST_CODE)
     }
 
-    override fun disableBluetooth(callback: (Result<Boolean>) -> Unit) {
-        val adapter = bluetoothAdapter
-        if (adapter == null) {
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.BLUETOOTH_NOT_AVAILABLE, "Bluetooth adapter not available")))
-            return
-        }
-        if (!adapter.isEnabled) {
-            callback(Result.success(true))
-            return
-        }
-
-        // Android 13（TIRAMISU）起，第三方应用若以 TIRAMISU 或更高版本为目标，
-        // 系统不再允许其关闭蓝牙：BluetoothAdapter.disable() 会始终返回 false。
-        // 系统并未提供类似 ACTION_REQUEST_ENABLE 的“关闭确认”Intent，因此插件
-        // 无法在 Android 13+ 上真正关闭蓝牙。此处仍调用 disable() 以兼容
-        // Android 12 及以下版本（可正常关闭），并将原生返回值透传给 Flutter 层，
-        // 由调用方根据 false 给出反馈（如引导用户到系统设置手动关闭）。
-        // 与 enableBluetooth 的行为保持一致：用户拒绝/系统拒绝时返回 false，
-        // 而非抛出异常，避免调用方在未 try/catch 时出现“无任何反应”的情况。
-        try {
-            @Suppress("DEPRECATION") // disable() 自 API 33 起弃用，已在上方按 TIRAMISU 分支处理
-            val success = adapter.disable()
-            if (!success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                PrinterConnectLogger.logWarning(
-                    "disableBluetooth() returned false: Android 13+ disallows apps " +
-                        "from disabling Bluetooth. Guide the user to disable it via system settings."
-                )
-            }
-            callback(Result.success(success))
-        } catch (e: Exception) {
-            PrinterConnectLogger.logError("Failed to disable Bluetooth: ${e.message}")
-            callback(Result.failure(createFlutterError(UniversalBleErrorCode.FAILED, e.message ?: "Unknown error")))
-        }
-    }
-
     @SuppressLint("MissingPermission")
     override fun startScan(filter: UniversalScanFilter?, config: UniversalScanConfig?) {
         if (!isBluetoothAvailable()) {

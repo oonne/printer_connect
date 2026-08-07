@@ -1077,7 +1077,6 @@ interface UniversalBlePlatformChannel {
   fun hasPermissions(withAndroidFineLocation: Boolean): Boolean
   fun requestPermissions(withAndroidFineLocation: Boolean, callback: (Result<Unit>) -> Unit)
   fun enableBluetooth(callback: (Result<Boolean>) -> Unit)
-  fun disableBluetooth(callback: (Result<Boolean>) -> Unit)
   fun startScan(filter: UniversalScanFilter?, config: UniversalScanConfig?)
   fun stopScan()
   fun isScanning(): Boolean
@@ -1162,24 +1161,6 @@ interface UniversalBlePlatformChannel {
         if (api != null) {
           channel.setMessageHandler { _, reply ->
             api.enableBluetooth{ result: Result<Boolean> ->
-              val error = result.exceptionOrNull()
-              if (error != null) {
-                reply.reply(PrinterConnectPigeonUtils.wrapError(error))
-              } else {
-                val data = result.getOrNull()
-                reply.reply(PrinterConnectPigeonUtils.wrapResult(data))
-              }
-            }
-          }
-        } else {
-          channel.setMessageHandler(null)
-        }
-      }
-      run {
-        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.disableBluetooth$separatedMessageChannelSuffix", codec)
-        if (api != null) {
-          channel.setMessageHandler { _, reply ->
-            api.disableBluetooth{ result: Result<Boolean> ->
               val error = result.exceptionOrNull()
               if (error != null) {
                 reply.reply(PrinterConnectPigeonUtils.wrapError(error))

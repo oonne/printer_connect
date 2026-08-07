@@ -82,12 +82,6 @@ class MockPrinterConnect extends PrinterConnectPlatform {
   }
 
   @override
-  Future<bool> disableBluetooth() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    return true;
-  }
-
-  @override
   Future<AvailabilityState> getBluetoothAvailabilityState() async {
     return AvailabilityState.poweredOn;
   }

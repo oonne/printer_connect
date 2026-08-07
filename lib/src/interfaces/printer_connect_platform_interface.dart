@@ -178,8 +178,6 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
 
   Future<bool> enableBluetooth();
 
-  Future<bool> disableBluetooth();
-
   Future<bool> hasPermissions({bool withAndroidFineLocation = false}) async {
     return true;
   }
@@ -396,19 +394,6 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
     // （允许 → true，拒绝 → false）。此前这里丢弃了返回值并恒为 true，
     // 导致用户拒绝开启时仍提示“蓝牙已开启: true”。
     return _platformChannel.enableBluetooth();
-  }
-
-  @override
-  Future<bool> disableBluetooth() async {
-    if (!BleCapabilities.supportsBluetoothEnableApi) {
-      throw UnsupportedError(
-        'disableBluetooth is not supported on this platform',
-      );
-    }
-    // 直接透传原生层的返回值。Android 13+（以 TIRAMISU 为目标）上
-    // BluetoothAdapter.disable() 会被系统拒绝并返回 false，此处需将 false
-    // 透传给调用方，而不是恒为 true。
-    return _platformChannel.disableBluetooth();
   }
 
   @override

@@ -955,7 +955,6 @@ protocol UniversalBlePlatformChannel {
   func hasPermissions(withAndroidFineLocation: Bool) throws -> Bool
   func requestPermissions(withAndroidFineLocation: Bool, completion: @escaping (Result<Void, Error>) -> Void)
   func enableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void)
-  func disableBluetooth(completion: @escaping (Result<Bool, Error>) -> Void)
   func startScan(filter: UniversalScanFilter?, config: UniversalScanConfig?) throws
   func stopScan() throws
   func isScanning() throws -> Bool
@@ -1040,21 +1039,6 @@ class UniversalBlePlatformChannelSetup {
       }
     } else {
       enableBluetoothChannel.setMessageHandler(nil)
-    }
-    let disableBluetoothChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.disableBluetooth\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
-    if let api = api {
-      disableBluetoothChannel.setMessageHandler { _, reply in
-        api.disableBluetooth { result in
-          switch result {
-          case .success(let res):
-            reply(wrapResult(res))
-          case .failure(let error):
-            reply(wrapError(error))
-          }
-        }
-      }
-    } else {
-      disableBluetoothChannel.setMessageHandler(nil)
     }
     let startScanChannel = FlutterBasicMessageChannel(name: "dev.flutter.pigeon.printer_connect.UniversalBlePlatformChannel.startScan\(channelSuffix)", binaryMessenger: binaryMessenger, codec: codec)
     if let api = api {
