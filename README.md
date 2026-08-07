@@ -30,16 +30,18 @@ import 'package:printer_connect/printer_connect.dart';
 在你的 AndroidManifest.xml 文件中添加以下权限。
 
 ```xml
-<uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-<uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-    android:usesPermissionFlags="neverForLocation" />
-<uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-```
+  <!-- 蓝牙权限 -->
+  <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+  <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+      android:usesPermissionFlags="neverForLocation" />
+  <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
 
-- 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
-- 权限必须由宿主 App（而不是插件自身的 manifest）声明\*\*，以便正确参与 manifest 合并并避免与其他插件冲突。
+  <!-- 硬件特性声明 -->
+  <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+  <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+```
 
 #### Android 位置权限
 
@@ -90,14 +92,14 @@ await Printer.connect(deviceId);
 
 ### 一、基础API
 
-| 功能                        | 方法                              | Android | iOS |
-| :-------------------------- | :-------------------------------- | :-----: | :-: |
-| [扫描](#扫描)               | startScan/stopScan                |   ✔️    | ✔️  |
-| [系统设备](#系统设备)       | getSystemDevices                  |   ✔️    | ✔️  |
-| [连接/断开](#连接)          | connect/disconnect                |   ✔️    | ✔️  |
+| 功能                          | 方法                            | Android | iOS |
+| :---------------------------- | :------------------------------ | :-----: | :-: |
+| [扫描](#扫描)                 | startScan/stopScan              |   ✔️    | ✔️  |
+| [系统设备](#系统设备)         | getSystemDevices                |   ✔️    | ✔️  |
+| [连接/断开](#连接)            | connect/disconnect              |   ✔️    | ✔️  |
 | [获取打印服务](#获取打印服务) | PrinterServiceFinder.initDevice |   ✔️    | ✔️  |
-| [写入数据](#读取与写入数据) | write                             |   ✔️    | ✔️  |
-| [订阅通知](#订阅)           | subscriptions                     |   ✔️    | ✔️  |
+| [写入数据](#读取与写入数据)   | write                           |   ✔️    | ✔️  |
+| [订阅通知](#订阅)             | subscriptions                   |   ✔️    | ✔️  |
 
 ### 二、高级API
 
