@@ -93,20 +93,20 @@ await Printer.connect(deviceId);
 | 功能                        | 方法               | Android | iOS |
 | :-------------------------- | :----------------- | :-----: | :-: |
 | [扫描](#扫描)               | startScan/stopScan |   ✔️    | ✔️  |
+| [系统设备](#系统设备)       | getSystemDevices   |   ✔️    | ✔️  |
 | [连接/断开](#连接)          | connect/disconnect |   ✔️    | ✔️  |
-| [发现服务](#发现服务)       | discoverServices   |   ✔️    | ✔️  |
-| [读取数据](#读取与写入数据) | read               |   ✔️    | ✔️  |
 | [写入数据](#读取与写入数据) | write              |   ✔️    | ✔️  |
-| [订阅通知](#订阅)      | subscriptions      |   ✔️    | ✔️  |
+| [订阅通知](#订阅)           | subscriptions      |   ✔️    | ✔️  |
 
 ### 二、高级API
 
 | 功能                                | 方法                          | Android | iOS |
 | :---------------------------------- | :---------------------------- | :-----: | :-: |
-| [系统设备](#系统设备)               | getSystemDevices              |   ✔️    | ✔️  |
 | [获取蓝牙状态](#蓝牙可用性)         | getBluetoothAvailabilityState |   ✔️    | ✔️  |
-| [启用蓝牙](#蓝牙可用性)             | enableBluetooth              |   ✔️    | ❌  |
+| [启用蓝牙](#蓝牙可用性)             | enableBluetooth               |   ✔️    | ❌  |
 | [蓝牙状态流](#蓝牙可用性)           | availabilityStream            |   ✔️    | ✔️  |
+| [发现服务](#发现服务)               | discoverServices              |   ✔️    | ✔️  |
+| [读取数据](#读取与写入数据)         | read                          |   ✔️    | ✔️  |
 | [请求MTU](#请求-mtu)                | requestMtu                    |   ✔️    | ✔️  |
 | [请求连接优先级](#请求连接优先级)   | requestConnectionPriority     |   ✔️    | ❌  |
 | [连接参数变化回调](#请求连接优先级) | onConnectionParametersChange  |   ✔️    | ❌  |
