@@ -223,17 +223,31 @@ class _CentralHomeState extends State<CentralHome> {
                       ? PlatformButton(
                           text: '开启蓝牙',
                           onPressed: () async {
-                            bool isEnabled =
-                                await PrinterConnect.enableBluetooth();
-                            showSnackbar("蓝牙已开启: $isEnabled");
+                            try {
+                              bool isEnabled =
+                                  await PrinterConnect.enableBluetooth();
+                              showSnackbar(
+                                isEnabled ? "蓝牙已开启" : "蓝牙未开启（用户拒绝或系统不允许）",
+                              );
+                            } catch (e) {
+                              showSnackbar(e.toString());
+                            }
                           },
                         )
                       : PlatformButton(
                           text: '关闭蓝牙',
                           onPressed: () async {
-                            bool isDisabled =
-                                await PrinterConnect.disableBluetooth();
-                            showSnackbar("蓝牙已关闭: $isDisabled");
+                            try {
+                              bool isDisabled =
+                                  await PrinterConnect.disableBluetooth();
+                              showSnackbar(
+                                isDisabled
+                                    ? "蓝牙已关闭"
+                                    : "关闭蓝牙失败：系统可能不允许应用关闭蓝牙，请到系统设置手动关闭",
+                              );
+                            } catch (e) {
+                              showSnackbar(e.toString());
+                            }
                           },
                         ),
                 if (BleCapabilities.requiresRuntimePermission) ...[

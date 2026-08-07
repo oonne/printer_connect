@@ -392,8 +392,10 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
         'enableBluetooth is not supported on this platform',
       );
     }
-    await _platformChannel.enableBluetooth();
-    return true;
+    // 直接透传原生层的返回值：Android 上该值反映用户在系统弹框中的选择
+    // （允许 → true，拒绝 → false）。此前这里丢弃了返回值并恒为 true，
+    // 导致用户拒绝开启时仍提示“蓝牙已开启: true”。
+    return _platformChannel.enableBluetooth();
   }
 
   @override
@@ -403,8 +405,10 @@ class PigeonPrinterConnectPlatform extends PrinterConnectPlatform
         'disableBluetooth is not supported on this platform',
       );
     }
-    await _platformChannel.disableBluetooth();
-    return true;
+    // 直接透传原生层的返回值。Android 13+（以 TIRAMISU 为目标）上
+    // BluetoothAdapter.disable() 会被系统拒绝并返回 false，此处需将 false
+    // 透传给调用方，而不是恒为 true。
+    return _platformChannel.disableBluetooth();
   }
 
   @override
