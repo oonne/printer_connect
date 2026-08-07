@@ -171,7 +171,7 @@ class _CentralHomeState extends State<CentralHome> {
     return Scaffold(
       appBar: widget.showAppBar
           ? AppBar(
-              title: const Text('Printer Connect - 中心设备'),
+              title: const Text('蓝牙打印机连接测试'),
               elevation: 4,
               actions: [
                 if (_isScanning)

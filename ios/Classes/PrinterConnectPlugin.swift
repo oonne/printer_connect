@@ -587,6 +587,10 @@ private class BleCentralDarwin: NSObject, UniversalBlePlatformChannel, CBCentral
         let displayName = advertisedName ?? peripheral.name
         advertisementNameCache[peripheral.uuid.uuidString] = displayName
 
+        if displayName.isEmpty {
+            return
+        }
+
         if !printerConnectFilterUtil.filterDevice(name: displayName, manufacturerData: universalManufacturerData, services: services) {
             return
         }

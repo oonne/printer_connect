@@ -775,6 +775,9 @@ class PrinterConnectPlugin : FlutterPlugin, BluetoothGattCallback(), ActivityAwa
         val device = result.device
         val address = device.address
         val name = result.resolvedDeviceName
+        if (name.isNullOrEmpty()) {
+            return
+        }
         val timestamp = System.currentTimeMillis()
 
         val serviceUuids = mutableListOf<java.util.UUID>()
