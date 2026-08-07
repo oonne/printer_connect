@@ -72,11 +72,6 @@ class PrinterServiceFinder {
       final result = await _getZicox(deviceId);
       service = result.service;
       characteristic = result.characteristic;
-    } else if (_isSw(name)) {
-      // 商为打印盒子
-      final result = await _getSw(deviceId);
-      service = result.service;
-      characteristic = result.characteristic;
     } else {
       // 其他通用打印机
       final result = await _getUniversal(deviceId);
@@ -177,49 +172,6 @@ class PrinterServiceFinder {
 
     return (service: service.uuid, characteristic: characteristic.uuid);
   }
-
-  // ===========================================================================
-  // 商为打印盒子
-  // 蓝牙名以 "SW" 开头
-  // serviceId 以 "000000FF" 开头
-  // characteristicId 以 "0000FF01" 开头
-  // ===========================================================================
-
-  /// 判断是否为商为打印盒子
-  static bool _isSw(String localName) {
-    return localName.startsWith('SW');
-  }
-
-  /// 获取商为打印盒子的 service 和 characteristic
-  static Future<({String service, String characteristic})> _getSw(
-    String deviceId,
-  ) async {
-    // 获取设备所有服务（对应 wx.getBLEDeviceServices）
-    final services = await PrinterConnect.discoverServices(deviceId);
-
-    // 查找以 "000000FF" 开头的 service
-    final service = services.firstWhere(
-      (s) => _uuidStartsWith(s.uuid, '000000FF'),
-      orElse: () => throw PrinterConnectException(
-        '打印机不支持(未找到可用服务)',
-        code: 'serviceNotFound',
-      ),
-    );
-
-    // 确定 characteristic：以 "0000FF01" 开头且支持 write
-    final characteristic = service.characteristics.firstWhere(
-      (c) =>
-          _uuidStartsWith(c.uuid, '0000FF01') &&
-          c.properties.contains(CharacteristicProperty.write),
-      orElse: () => throw PrinterConnectException(
-        '打印机不支持(未找到可用特征)',
-        code: 'characteristicNotFound',
-      ),
-    );
-
-    return (service: service.uuid, characteristic: characteristic.uuid);
-  }
-
   // ===========================================================================
   // 其他通用打印机
   // 取第一个满足 (notify || indicate) && write 的特征值
