@@ -230,6 +230,32 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
     }
   }
 
+  Future<void> _testTspl() async {
+    final info = printerServiceInfo;
+    if (info == null) return;
+    const tsplCommands = [
+      'SIZE 50mm,30mm',
+      'GAP 2mm',
+      'CLS',
+      'TEXT 40, 20,"4",0,1,1,"blog.oonne.com"',
+      'PRINT 1,1',
+    ];
+    // 每条指令以 \r\n 结尾，拼接为完整 TSPL 数据
+    final tsplData = '${tsplCommands.join('\r\n')}\r\n';
+    final value = Uint8List.fromList(tsplData.codeUnits);
+    try {
+      await PrinterConnect.write(
+        info.deviceId,
+        info.service,
+        info.characteristic,
+        value,
+      );
+      _addLog('测试TSPL', '已发送 ${value.length} 字节');
+    } catch (e) {
+      _addLog('测试TSPL错误 (${e.runtimeType})', e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -363,6 +389,12 @@ class _PeripheralDetailPageState extends State<PeripheralDetailPage> {
                         enabled: isConnected,
                         text: '获取打印服务',
                       ),
+                      if (printerServiceInfo != null)
+                        PlatformButton(
+                          onPressed: _testTspl,
+                          enabled: isConnected,
+                          text: '测试TSPL',
+                        ),
                       PlatformButton(
                         onPressed: () async {
                           _addLog(
