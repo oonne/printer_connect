@@ -67,35 +67,23 @@ import 'package:printer_connect/printer_connect.dart';
 
 使用清晰、面向用户的文本来解释你的应用为什么需要蓝牙。
 
-### 手动请求权限
+### 自动权限与蓝牙状态检查
 
-**调用 `requestPermissions()` 是可选的。** 在调用 `startScan()` 时会自动请求权限。但是，如果你想手动调用 `requestPermissions()`，可以：
+**`startScan()` 和 `connect()` 会自动执行前置检查**，无需手动处理：
 
-- 在扫描之前请求权限（例如，单独处理权限错误）
-- 确保在其他操作（如 `connect()`、`read()`、`write()` 等）之前授予权限，这些操作不会自动请求权限
-
-`requestPermissions()` 方法：
-
-- 如果所有权限已经授予或被用户接受，则成功返回
-- 如果权限被用户拒绝，则抛出 `PrinterConnectException`
-
-```dart
-// 可选：手动请求权限
-await PrinterConnect.requestPermissions(
-  withAndroidFineLocation: false,
-);
-```
-
-> **注意**：调用 `startScan()` 时，会自动请求权限。要在扫描期间配置位置权限请求，请在 `AndroidOptions` 上使用 `requestLocationPermission`：
+1. **权限检查**：自动检查并请求蓝牙相关权限
+   - 如果权限已授予，直接继续
+   - 如果权限未授予，自动调用 `requestPermissions()` 请求权限
+   - 如果用户拒绝权限，抛出 `PrinterConnectException('permission_request_failed')` 或 `PrinterConnectException('permissions_not_granted')`
+2. **蓝牙状态检查**：自动检查蓝牙是否已开启
+   - **Android**：如果蓝牙未开启，自动调用 `enableBluetooth()` 尝试开启
+   - **iOS/macOS**：如果蓝牙未开启，直接抛出 `PrinterConnectException('bluetooth_not_enabled')`
+   - 如果 `enableBluetooth()` 返回 `false`（用户拒绝），抛出同样的异常
 
 ```dart
-PrinterConnect.startScan(
-  platformConfig: PlatformConfig(
-    android: AndroidOptions(
-      requestLocationPermission: false,
-    ),
-  ),
-);
+// startScan 和 connect 已内置上述检查，直接调用即可：
+await PrinterConnect.startScan();
+await Printer.connect(deviceId);
 ```
 
 ## API
@@ -117,7 +105,7 @@ PrinterConnect.startScan(
 | :---------------------------------- | :---------------------------- | :-----: | :-: |
 | [系统设备](#系统设备)               | getSystemDevices              |   ✔️    | ✔️  |
 | [获取蓝牙状态](#蓝牙可用性)         | getBluetoothAvailabilityState |   ✔️    | ✔️  |
-| [启用蓝牙](#蓝牙可用性)             | enable Bluetooth              |   ✔️    | ❌  |
+| [启用蓝牙](#蓝牙可用性)             | enableBluetooth              |   ✔️    | ❌  |
 | [蓝牙状态流](#蓝牙可用性)           | availabilityStream            |   ✔️    | ✔️  |
 | [请求MTU](#请求-mtu)                | requestMtu                    |   ✔️    | ✔️  |
 | [请求连接优先级](#请求连接优先级)   | requestConnectionPriority     |   ✔️    | ❌  |
@@ -151,19 +139,13 @@ PrinterConnect.isScanning();
 ```
 
 > **提示**：在 Android 上，`startScan()` 默认扫描传统 BLE 4.x 广播（`legacy: true`），适配主流打印机。如需扫描 BLE 5 扩展广播，请通过 `PlatformConfig(android: AndroidOptions(legacy: false))` 显式设置。
-> 在启动扫描之前，请确保蓝牙可用：
+>
+> **`startScan()` 会自动处理权限和蓝牙状态**（参见[自动权限与蓝牙状态检查](#自动权限与蓝牙状态检查)），无需在调用前手动检查。如果需要在 UI 上显示蓝牙状态变化，可以使用 `availabilityStream`：
 
 ```dart
-AvailabilityState state = await PrinterConnect.getBluetoothAvailabilityState();
-// 仅在蓝牙已开机时才开始扫描
-if (state == AvailabilityState.poweredOn) {
-  PrinterConnect.startScan();
-}
 // 使用流监听蓝牙可用性变化
 PrinterConnect.availabilityStream.listen((state) {
-  if (state == AvailabilityState.poweredOn) {
-    PrinterConnect.startScan();
-  }
+  // 处理蓝牙状态变化
 });
 ```
 
@@ -235,6 +217,8 @@ exclusionFilters: [
 #### 连接
 
 连接到 BLE 设备。此方法启动与蓝牙设备的连接。
+
+> **注意**：`connect()` 会自动执行权限和蓝牙状态前置检查（参见[自动权限与蓝牙状态检查](#自动权限与蓝牙状态检查)）。
 
 ```dart
 await bleDevice.connect();
@@ -375,6 +359,7 @@ PrinterConnect.availabilityStream.listen((state) {
   // 处理新的蓝牙可用性状态
 });
 // 以编程方式启用蓝牙（仅限 Android）
+// 注意：startScan() 和 connect() 在 Android 上会自动调用 enableBluetooth()
 await PrinterConnect.enableBluetooth();
 ```
 
@@ -457,6 +442,7 @@ Printer Connect 提供了跨平台统一且类型安全的错误处理系统。�
 - 连接错误（超时、失败、被拒绝等）
 - 操作错误（不支持、超时、取消等）
 - 权限错误（不允许、未授权、访问被拒绝等）
+- **自动检查错误**（`permission_request_failed`、`permissions_not_granted`、`bluetooth_not_enabled`）
 - 设备错误（未找到、已断开连接等）
 - 服务/特征错误（未找到、无效的 UUID 等）
 - 以及更多...
@@ -465,25 +451,24 @@ Printer Connect 提供了跨平台统一且类型安全的错误处理系统。�
 
 ```dart
 try {
-  await bleDevice.connect();
-} on ConnectionException catch (e) {
-  // 处理连接特定的错误
+  await PrinterConnect.startScan();
+  // 或：await bleDevice.connect();
+} on PrinterConnectException catch (e) {
+  // 处理自动检查相关的错误
   switch (e.code) {
-    case 'connectionTimeout':
-      // 处理超时
+    case 'permission_request_failed':
+      // 权限请求失败（用户拒绝或系统错误）
       break;
-    case 'connectionFailed':
-      // 处理连接失败
+    case 'permissions_not_granted':
+      // 权限未授予
       break;
-    case 'deviceDisconnected':
-      // 处理断开连接
+    case 'bluetooth_not_enabled':
+      // 蓝牙未开启（iOS/macOS 上需用户手动开启，Android 上 enableBluetooth 被拒绝）
       break;
     default:
-      // 处理其他连接错误
+      // 处理其他 BLE 错误
+      print('Error code: ${e.code}, Message: ${e.message}');
   }
-} on PrinterConnectException catch (e) {
-  // 处理其他 BLE 错误
-  print('Error code: ${e.code}, Message: ${e.message}');
 }
 ```
 

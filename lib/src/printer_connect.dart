@@ -100,11 +100,16 @@ class PrinterConnect {
   /// 开始扫描蓝牙设备
   /// 扫描结果将通过 [onScanResult] 监听器返回
   /// 如果蓝牙不可用，可能会抛出错误
+  ///
+  /// 自动执行前置检查：
+  /// 1. 检查并请求蓝牙相关权限
+  /// 2. 检查蓝牙是否已开启，Android 上会尝试自动开启蓝牙
   static Future<void> startScan({
     ScanFilter? scanFilter,
     PlatformConfig? platformConfig,
     String? queueId,
   }) async {
+    await _ensurePermissionsAndBluetooth();
     return await _bleCommandQueue.queueCommandWithoutTimeout(
       () => _platform.startScan(
         scanFilter: scanFilter,
@@ -148,12 +153,17 @@ class PrinterConnect {
   /// 其他平台忽略此参数
   ///
   /// 可能抛出 `ConnectionException` 或 `PlatformException`
+  ///
+  /// 自动执行前置检查：
+  /// 1. 检查并请求蓝牙相关权限
+  /// 2. 检查蓝牙是否已开启，Android 上会尝试自动开启蓝牙
   static Future<void> connect(
     String deviceId, {
     Duration? timeout,
     bool autoConnect = false,
     ConnectionPlatformConfig? platformConfig,
   }) async {
+    await _ensurePermissionsAndBluetooth();
     timeout ??= const Duration(seconds: 60);
     // 创建事件等待机制：通过 _connectionEventCompleter 监听连接状态流，
     // 当平台层上报连接成功/失败事件时，completer.future 完成，
@@ -473,6 +483,57 @@ class PrinterConnect {
   }
 
   // 私有辅助方法
+
+  /// 前置检查：确保权限已授予且蓝牙已开启
+  ///
+  /// 在 startScan 和 connect 之前自动调用：
+  /// 1. 检查权限，如未授予则自动请求权限
+  /// 2. 检查蓝牙状态，如未开启则尝试自动开启（仅 Android）
+  ///
+  /// 可能抛出：
+  /// - `PrinterConnectException('permission_request_failed')` - 权限请求失败
+  /// - `PrinterConnectException('permissions_not_granted')` - 权限未授予
+  /// - `PrinterConnectException('bluetooth_not_enabled')` - 蓝牙未开启
+  static Future<void> _ensurePermissionsAndBluetooth() async {
+    // 1. 检查并请求权限
+    final hasPermission = await _platform.hasPermissions();
+    if (!hasPermission) {
+      try {
+        await _platform.requestPermissions();
+      } catch (e) {
+        throw exceptions.PrinterConnectException(
+          'Failed to request permissions: ${e.toString()}',
+          code: 'permission_request_failed',
+        );
+      }
+      final granted = await _platform.hasPermissions();
+      if (!granted) {
+        throw exceptions.PrinterConnectException(
+          'Required permissions not granted',
+          code: 'permissions_not_granted',
+        );
+      }
+    }
+
+    // 2. 检查蓝牙状态
+    final state = await _platform.getBluetoothAvailabilityState();
+    if (state != AvailabilityState.poweredOn) {
+      if (BleCapabilities.supportsBluetoothEnableApi) {
+        final enabled = await _platform.enableBluetooth();
+        if (!enabled) {
+          throw exceptions.PrinterConnectException(
+            'Bluetooth is not enabled',
+            code: 'bluetooth_not_enabled',
+          );
+        }
+      } else {
+        throw exceptions.PrinterConnectException(
+          'Bluetooth is not enabled',
+          code: 'bluetooth_not_enabled',
+        );
+      }
+    }
+  }
 
   /// 创建一个 Completer，当连接状态发生变化时完成
   /// 这是一个事件等待机制：订阅平台层的连接更新流，

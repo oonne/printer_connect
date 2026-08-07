@@ -174,9 +174,11 @@ abstract class PrinterConnectPlatform extends PlatformInterface {
     } catch (_) {}
   }
 
-  Future<AvailabilityState> getBluetoothAvailabilityState();
+  Future<AvailabilityState> getBluetoothAvailabilityState() async {
+    return AvailabilityState.poweredOn;
+  }
 
-  Future<bool> enableBluetooth();
+  Future<bool> enableBluetooth() async => true;
 
   Future<bool> hasPermissions({bool withAndroidFineLocation = false}) async {
     return true;

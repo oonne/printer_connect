@@ -28,16 +28,6 @@ abstract class PrinterConnectPlatformMock extends PrinterConnectPlatform {
   }
 
   @override
-  Future<bool> enableBluetooth() {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<AvailabilityState> getBluetoothAvailabilityState() {
-    throw UnimplementedError();
-  }
-
-  @override
   Future<BleConnectionState> getConnectionState(String deviceId) {
     throw UnimplementedError();
   }
