@@ -12,7 +12,8 @@
 
 ## 快速开始
 
-安装插件: 
+安装插件:
+
 ```
 flutter pub add printer_connect
 ```
@@ -38,7 +39,7 @@ import 'package:printer_connect/printer_connect.dart';
 ```
 
 - 这 5 条权限覆盖了完整的蓝牙打印机使用流程（扫描 → 连接 → 读写 → MTU/RSSI/连接优先级），在 Android 6.0（API 23）到最新版本上所有功能正常。`maxSdkVersion` 和 `neverForLocation` 会让权限按 Android 版本自动生效，无需手动区分。
-- 权限必须由宿主 App（而不是插件自身的 manifest）声明**，以便正确参与 manifest 合并并避免与其他插件冲突。
+- 权限必须由宿主 App（而不是插件自身的 manifest）声明\*\*，以便正确参与 manifest 合并并避免与其他插件冲突。
 
 #### Android 位置权限
 
@@ -97,25 +98,32 @@ PrinterConnect.startScan(
 );
 ```
 
-## API 
+## API
 
-| 功能 | 方法 | Android | iOS |
-| :--- | :--- | :---: | :---: |
-| [扫描](#扫描) | startScan/stopScan | ✔️ | ✔️ |
-| [连接/断开](#连接) | connect/disconnect | ✔️ | ✔️ |
-| [系统设备](#系统设备) | getSystemDevices | ✔️ | ✔️ |
-| [发现服务](#发现服务) | discoverServices | ✔️ | ✔️ |
-| [读取数据](#读取与写入数据) | read | ✔️ | ✔️ |
-| [写入数据](#读取与写入数据) | write | ✔️ | ✔️ |
-| [订阅通知/指示](#订阅) | subscriptions | ✔️ | ✔️ |
-| [获取蓝牙状态](#蓝牙可用性) | getBluetoothAvailabilityState | ✔️ | ✔️ |
-| [启用蓝牙](#蓝牙可用性) | enable Bluetooth | ✔️ | ❌ |
-| [蓝牙状态流](#蓝牙可用性) | availabilityStream | ✔️ | ✔️ |
-| [请求MTU](#请求-mtu) | requestMtu | ✔️ | ✔️ |
-| [请求连接优先级](#请求连接优先级) | requestConnectionPriority | ✔️ | ❌ |
-| [连接参数变化回调](#请求连接优先级) | onConnectionParametersChange | ✔️ | ❌ |
-| [读取信号强度](#读取-rssi) | readRssi | ✔️ | ✔️ |
-| [请求权限](#手动请求权限) | requestPermissions | ✔️ | ✔️ |
+### 一、基础API
+
+| 功能                        | 方法               | Android | iOS |
+| :-------------------------- | :----------------- | :-----: | :-: |
+| [扫描](#扫描)               | startScan/stopScan |   ✔️    | ✔️  |
+| [连接/断开](#连接)          | connect/disconnect |   ✔️    | ✔️  |
+| [发现服务](#发现服务)       | discoverServices   |   ✔️    | ✔️  |
+| [读取数据](#读取与写入数据) | read               |   ✔️    | ✔️  |
+| [写入数据](#读取与写入数据) | write              |   ✔️    | ✔️  |
+| [订阅通知/指示](#订阅)      | subscriptions      |   ✔️    | ✔️  |
+
+### 二、高级API
+
+| 功能                                | 方法                          | Android | iOS |
+| :---------------------------------- | :---------------------------- | :-----: | :-: |
+| [系统设备](#系统设备)               | getSystemDevices              |   ✔️    | ✔️  |
+| [获取蓝牙状态](#蓝牙可用性)         | getBluetoothAvailabilityState |   ✔️    | ✔️  |
+| [启用蓝牙](#蓝牙可用性)             | enable Bluetooth              |   ✔️    | ❌  |
+| [蓝牙状态流](#蓝牙可用性)           | availabilityStream            |   ✔️    | ✔️  |
+| [请求MTU](#请求-mtu)                | requestMtu                    |   ✔️    | ✔️  |
+| [请求连接优先级](#请求连接优先级)   | requestConnectionPriority     |   ✔️    | ❌  |
+| [连接参数变化回调](#请求连接优先级) | onConnectionParametersChange  |   ✔️    | ❌  |
+| [读取信号强度](#读取-rssi)          | readRssi                      |   ✔️    | ✔️  |
+| [请求权限](#手动请求权限)           | requestPermissions            |   ✔️    | ✔️  |
 
 ### 扫描
 
@@ -126,10 +134,8 @@ PrinterConnect.startScan(
 PrinterConnect.scanStream.listen((BleDevice bleDevice) {
   // 例如：使用 BleDevice ID 进行连接
 });
-
 // 执行扫描
 PrinterConnect.startScan();
-
 // 或者可选地添加扫描过滤器
 PrinterConnect.startScan(
   scanFilter: ScanFilter(
@@ -138,17 +144,14 @@ PrinterConnect.startScan(
     withNamePrefix: ["NAME_PREFIX"],
   )
 );
-
 // 停止扫描
 PrinterConnect.stopScan();
-
 // 检查是否正在扫描
 PrinterConnect.isScanning();
 ```
 
 > **提示**：在 Android 上，`startScan()` 默认扫描传统 BLE 4.x 广播（`legacy: true`），适配主流打印机。如需扫描 BLE 5 扩展广播，请通过 `PlatformConfig(android: AndroidOptions(legacy: false))` 显式设置。
-
-在启动扫描之前，请确保蓝牙可用：
+> 在启动扫描之前，请确保蓝牙可用：
 
 ```dart
 AvailabilityState state = await PrinterConnect.getBluetoothAvailabilityState();
@@ -156,7 +159,6 @@ AvailabilityState state = await PrinterConnect.getBluetoothAvailabilityState();
 if (state == AvailabilityState.poweredOn) {
   PrinterConnect.startScan();
 }
-
 // 使用流监听蓝牙可用性变化
 PrinterConnect.availabilityStream.listen((state) {
   if (state == AvailabilityState.poweredOn) {
@@ -179,7 +181,6 @@ List<BleDevice> devices = await PrinterConnect.getSystemDevices(withServices: []
 ```
 
 对于每个这样的设备，`isSystemDevice` 属性将为 `true`。
-
 在能够使用它们之前，你仍然需要显式地[连接](#连接)它们。
 
 #### 扫描过滤器
@@ -197,7 +198,6 @@ List<String> withServices;
 ##### 按制造商数据过滤
 
 使用 `withManufacturerData` 参数按制造商数据过滤设备。当你向此参数传递一个 `ManufacturerDataFilter` 对象列表时，扫描结果将仅包含包含任何指定制造商数据的设备。
-
 你可以通过公司标识符、载荷前缀或载荷掩码来过滤制造商数据。
 
 ```dart
@@ -272,7 +272,6 @@ BleConnectionState connectionState = await bleDevice.connectionState;
 ### 发现服务
 
 建立连接后，需要发现服务。此方法将发现所有服务及其特征。
-
 如果你不调用此方法，那么当你尝试获取任何服务或特征时，它将被自动调用。
 
 #### DiscoverServices
@@ -325,7 +324,6 @@ Uint8List value = await characteristic.read();
 
 ```dart
 await characteristic.write([0x01, 0x02, 0x03]);
-
 await characteristic.write([0x01, 0x02, 0x03], withResponse: false);
 ```
 
@@ -372,12 +370,10 @@ await characteristic.unsubscribe();
 ```dart
 // 获取当前蓝牙可用性状态
 AvailabilityState availabilityState = await PrinterConnect.getBluetoothAvailabilityState(); // 例如：poweredOff 或 poweredOn
-
 // 通过流接收蓝牙可用性变化
 PrinterConnect.availabilityStream.listen((state) {
   // 处理新的蓝牙可用性状态
 });
-
 // 以编程方式启用蓝牙（仅限 Android）
 await PrinterConnect.enableBluetooth();
 ```
@@ -396,7 +392,6 @@ int mtu = await bleDevice.requestMtu(256);
 MTU 协商在很大程度上由平台和协议栈管理，应用程序通常无法显式控制：
 
 - **iOS**：MTU 完全由操作系统管理；应用程序无法请求或设置它。历史上约为 185 字节，但现代设备可能会自动协商更大的 MTU（约 247–517）。
-
 - **Android**：
   - **Android ≤ 13**：应用程序每次连接可以请求一次 MTU（最多 517）。如果从未请求，默认 MTU 为 23。
   - **Android 14+**：第一个蓝牙客户端有效地将 MTU 协商驱动到 517（或链路的最大值）；后续的 MTU 请求将被忽略。
@@ -425,9 +420,7 @@ await PrinterConnect.requestConnectionPriority(
 
 > **注意：** 仅在 Android 上支持。在 iOS 上，这会抛出代码为 `notSupported` 的 `PrinterConnectException`。
 > 在连接之后和 `requestMtu()` 之后，在开始数据传输之前调用此方法。
-
-操作系统可能会在你的应用未请求的情况下更改连接参数（例如，为了省电），这可能会降低吞吐量。在 Android API 26+ 上，你可以通过自定义平台实现订阅平台级别的 `onConnectionParametersChange` 回调来监听连接参数变化。
-
+> 操作系统可能会在你的应用未请求的情况下更改连接参数（例如，为了省电），这可能会降低吞吐量。在 Android API 26+ 上，你可以通过自定义平台实现订阅平台级别的 `onConnectionParametersChange` 回调来监听连接参数变化。
 > **注意：** 在每次更新时重新请求高优先级可能会与操作系统的电源管理器发生冲突——在应用代码中进行防抖处理。需要 Android API 26+。
 
 ### 读取 RSSI
@@ -598,6 +591,7 @@ Future<void> resetBleState() async {
 此仓库包含一个[示例应用](example/)，演示了基本的扫描和设备通信工作流程。
 
 测试应用使用方式: 先通过 flutter devices 获取到设备ID，然后运行以下命令:
+
 ```
 cd example
 flutter run -d <device_id>
