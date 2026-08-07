@@ -103,7 +103,6 @@ PrinterConnect.startScan(
 | :--- | :--- | :---: | :---: |
 | [扫描](#扫描) | startScan/stopScan | ✔️ | ✔️ |
 | [连接/断开](#连接) | connect/disconnect | ✔️ | ✔️ |
-| [自动重连](#自动连接) | autoConnect | ✔️ | ✔️ |
 | [系统设备](#系统设备) | getSystemDevices | ✔️ | ✔️ |
 | [发现服务](#发现服务) | discoverServices | ✔️ | ✔️ |
 | [读取数据](#读取与写入数据) | read | ✔️ | ✔️ |
