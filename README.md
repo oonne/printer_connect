@@ -216,13 +216,21 @@ exclusionFilters: [
 
 #### 连接
 
-连接到 BLE 设备。此方法启动与蓝牙设备的连接。
+连接到 BLE 设备。插件提供两种连接方式：
 
-> **注意**：`connect()` 会自动执行权限和蓝牙状态前置检查（参见[自动权限与蓝牙状态检查](#自动权限与蓝牙状态检查)）。
+1. **通过 `BleDevice` 实例连接**（已有设备对象时）：
 
 ```dart
 await bleDevice.connect();
 ```
+
+2. **通过设备 ID 连接**（已知 deviceId，无需先获取 `BleDevice` 对象）：
+
+```dart
+await PrinterConnect.connect(deviceId);
+```
+
+> **注意**：两种 `connect()` 都会自动执行权限和蓝牙状态前置检查（参见[自动权限与蓝牙状态检查](#自动权限与蓝牙状态检查)）。
 
 #### 断开连接
 
