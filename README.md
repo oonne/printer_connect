@@ -94,27 +94,27 @@ await Printer.connect(deviceId);
 
 | 功能                          | 方法                            | Android | iOS |
 | :---------------------------- | :------------------------------ | :-----: | :-: |
-| [扫描](bluetooth_api.md#扫描)                 | startScan/stopScan              |   ✔️    | ✔️  |
-| [系统设备](bluetooth_api.md#系统设备)         | getSystemDevices                |   ✔️    | ✔️  |
-| [连接/断开](bluetooth_api.md#连接)            | connect/disconnect              |   ✔️    | ✔️  |
-| [获取打印服务](bluetooth_api.md#获取打印服务) | PrinterServiceFinder.initDevice |   ✔️    | ✔️  |
-| [写入数据](bluetooth_api.md#读取与写入数据)   | write                           |   ✔️    | ✔️  |
-| [订阅通知](bluetooth_api.md#订阅)             | subscriptions                   |   ✔️    | ✔️  |
+| [扫描](docs/bluetooth_api.md#扫描)                 | startScan/stopScan              |   ✔️    | ✔️  |
+| [系统设备](docs/bluetooth_api.md#系统设备)         | getSystemDevices                |   ✔️    | ✔️  |
+| [连接/断开](docs/bluetooth_api.md#连接)            | connect/disconnect              |   ✔️    | ✔️  |
+| [获取打印服务](docs/bluetooth_api.md#获取打印服务) | PrinterServiceFinder.initDevice |   ✔️    | ✔️  |
+| [写入数据](docs/bluetooth_api.md#读取与写入数据)   | write                           |   ✔️    | ✔️  |
+| [订阅通知](docs/bluetooth_api.md#订阅)             | subscriptions                   |   ✔️    | ✔️  |
 
 ### 二、高级API
 
 | 功能                                | 方法                          | Android | iOS |
 | :---------------------------------- | :---------------------------- | :-----: | :-: |
-| [获取蓝牙状态](bluetooth_api.md#蓝牙可用性)         | getBluetoothAvailabilityState |   ✔️    | ✔️  |
-| [启用蓝牙](bluetooth_api.md#蓝牙可用性)             | enableBluetooth               |   ✔️    | ❌  |
-| [蓝牙状态流](bluetooth_api.md#蓝牙可用性)           | availabilityStream            |   ✔️    | ✔️  |
-| [发现服务](bluetooth_api.md#发现服务)               | discoverServices              |   ✔️    | ✔️  |
-| [读取数据](bluetooth_api.md#读取与写入数据)         | read                          |   ✔️    | ✔️  |
-| [请求MTU](bluetooth_api.md#请求-mtu)                | requestMtu                    |   ✔️    | ✔️  |
-| [请求连接优先级](bluetooth_api.md#请求连接优先级)   | requestConnectionPriority     |   ✔️    | ❌  |
-| [连接参数变化回调](bluetooth_api.md#请求连接优先级) | onConnectionParametersChange  |   ✔️    | ❌  |
-| [读取信号强度](bluetooth_api.md#读取-rssi)          | readRssi                      |   ✔️    | ✔️  |
-| [请求权限](bluetooth_api.md#手动请求权限)           | requestPermissions            |   ✔️    | ✔️  |
+| [获取蓝牙状态](docs/bluetooth_api.md#蓝牙可用性)         | getBluetoothAvailabilityState |   ✔️    | ✔️  |
+| [启用蓝牙](docs/bluetooth_api.md#蓝牙可用性)             | enableBluetooth               |   ✔️    | ❌  |
+| [蓝牙状态流](docs/bluetooth_api.md#蓝牙可用性)           | availabilityStream            |   ✔️    | ✔️  |
+| [发现服务](docs/bluetooth_api.md#发现服务)               | discoverServices              |   ✔️    | ✔️  |
+| [读取数据](docs/bluetooth_api.md#读取与写入数据)         | read                          |   ✔️    | ✔️  |
+| [请求MTU](docs/bluetooth_api.md#请求-mtu)                | requestMtu                    |   ✔️    | ✔️  |
+| [请求连接优先级](docs/bluetooth_api.md#请求连接优先级)   | requestConnectionPriority     |   ✔️    | ❌  |
+| [连接参数变化回调](docs/bluetooth_api.md#请求连接优先级) | onConnectionParametersChange  |   ✔️    | ❌  |
+| [读取信号强度](docs/bluetooth_api.md#读取-rssi)          | readRssi                      |   ✔️    | ✔️  |
+| [请求权限](docs/bluetooth_api.md#手动请求权限)           | requestPermissions            |   ✔️    | ✔️  |
 
 ## 错误处理
 

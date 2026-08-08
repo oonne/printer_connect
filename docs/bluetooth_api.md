@@ -1,7 +1,5 @@
 # 蓝牙API
 
-> 返回 [README](README.md)。
-
 ## 扫描
 
 在能够连接设备之前，你需要做的第一件事就是通过调用 `startScan()` 来发现它：
@@ -29,7 +27,7 @@ PrinterConnect.isScanning();
 
 > **提示**：在 Android 上，`startScan()` 默认扫描传统 BLE 4.x 广播（`legacy: true`），适配主流打印机。如需扫描 BLE 5 扩展广播，请通过 `PlatformConfig(android: AndroidOptions(legacy: false))` 显式设置。
 >
-> **`startScan()` 会自动处理权限和蓝牙状态**（参见[自动权限与蓝牙状态检查](README.md#自动权限与蓝牙状态检查)），无需在调用前手动检查。如果需要在 UI 上显示蓝牙状态变化，可以使用 `availabilityStream`：
+> **`startScan()` 会自动处理权限和蓝牙状态**（参见[自动权限与蓝牙状态检查](../README.md#自动权限与蓝牙状态检查)），无需在调用前手动检查。如果需要在 UI 上显示蓝牙状态变化，可以使用 `availabilityStream`：
 
 ```dart
 // 使用流监听蓝牙可用性变化
@@ -119,7 +117,7 @@ await bleDevice.connect();
 await PrinterConnect.connect(deviceId);
 ```
 
-> **注意**：两种 `connect()` 都会自动执行权限和蓝牙状态前置检查（参见[自动权限与蓝牙状态检查](README.md#自动权限与蓝牙状态检查)）。
+> **注意**：两种 `connect()` 都会自动执行权限和蓝牙状态前置检查（参见[自动权限与蓝牙状态检查](../README.md#自动权限与蓝牙状态检查)）。
 
 ### 断开连接
 
